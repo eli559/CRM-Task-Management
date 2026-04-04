@@ -13,13 +13,50 @@ public class AuthService
         _factory = factory;
     }
 
+    // Login attempt tracking
+    private static readonly Dictionary<string, (int attempts, DateTime lockUntil)> _loginAttempts = new();
+    private const int MaxAttempts = 5;
+    private static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(15);
+
+    public (bool isLocked, int minutesLeft) IsAccountLocked(string username)
+    {
+        var key = username.Trim().ToLower();
+        if (_loginAttempts.TryGetValue(key, out var info) && info.Item2 > DateTime.Now)
+        {
+            return (true, (int)(info.Item2 - DateTime.Now).TotalMinutes + 1);
+        }
+        return (false, 0);
+    }
+
     public async Task<User?> LoginAsync(string username, string password)
     {
+        var key = username.Trim().ToLower();
+
+        // Check if locked
+        if (_loginAttempts.TryGetValue(key, out var info) && info.Item2 > DateTime.Now)
+            return null;
+
         using var db = await _factory.CreateDbContextAsync();
-        var hash = BCryptHelper.HashPassword(password);
-        var users = await db.Users.Where(u => u.IsActive && u.IsApproved).ToListAsync();
-        return users.FirstOrDefault(u =>
-            u.Username.Trim() == username.Trim() && u.PasswordHash == hash);
+        var user = await db.Users
+            .Where(u => u.IsActive && u.IsApproved)
+            .ToListAsync()
+            .ContinueWith(t => t.Result.FirstOrDefault(u =>
+                u.Username.Trim().Equals(username.Trim(), StringComparison.OrdinalIgnoreCase)));
+
+        if (user != null && BCryptHelper.VerifyPassword(password, user.PasswordHash))
+        {
+            // Success - reset attempts
+            _loginAttempts.Remove(key);
+            return user;
+        }
+
+        // Failed - increment attempts
+        var current = _loginAttempts.GetValueOrDefault(key, (0, DateTime.MinValue));
+        var newAttempts = current.Item1 + 1;
+        var newLock = newAttempts >= MaxAttempts ? DateTime.Now.Add(LockDuration) : current.Item2;
+        _loginAttempts[key] = (newAttempts, newLock);
+
+        return null;
     }
 
     public async Task<bool> IsUserPendingApproval(string username)

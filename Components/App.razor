@@ -88,14 +88,29 @@
         };
 
         window.saveSession = function (userId) {
-            localStorage.setItem('crm_user_id', userId);
+            var data = { id: userId, ts: Date.now() };
+            localStorage.setItem('crm_session', JSON.stringify(data));
         };
 
         window.getSession = function () {
-            return localStorage.getItem('crm_user_id');
+            var raw = localStorage.getItem('crm_session');
+            if (!raw) return null;
+            try {
+                var data = JSON.parse(raw);
+                // 24 hour expiry
+                if (Date.now() - data.ts > 24 * 60 * 60 * 1000) {
+                    localStorage.removeItem('crm_session');
+                    return null;
+                }
+                return data.id.toString();
+            } catch (e) {
+                // Support old format
+                return raw;
+            }
         };
 
         window.clearSession = function () {
+            localStorage.removeItem('crm_session');
             localStorage.removeItem('crm_user_id');
         };
 

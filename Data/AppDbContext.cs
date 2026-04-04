@@ -71,21 +71,52 @@ public class AppDbContext : DbContext
     }
 }
 
-// Simple BCrypt-like hash using HMACSHA256 for simplicity (no extra NuGet needed)
 public static class BCryptHelper
 {
-    private const string Salt = "CrmApp2024SecretSalt!";
+    private static string GetSalt()
+    {
+        return Environment.GetEnvironmentVariable("APP_SALT") ?? "CrmApp2024SecretSalt!";
+    }
 
     public static string HashPassword(string password)
     {
-        using var hmac = new System.Security.Cryptography.HMACSHA256(
-            System.Text.Encoding.UTF8.GetBytes(Salt));
-        var hash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
-        return Convert.ToBase64String(hash);
+        // Generate random salt per password
+        var saltBytes = new byte[16];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(saltBytes);
+        var salt = Convert.ToBase64String(saltBytes);
+
+        var hash = ComputeHash(password, salt);
+        return $"{salt}:{hash}";
     }
 
-    public static bool VerifyPassword(string password, string hash)
+    public static bool VerifyPassword(string password, string storedHash)
     {
-        return HashPassword(password) == hash;
+        // Support old format (no colon = legacy hash)
+        if (!storedHash.Contains(':'))
+        {
+            var legacySalt = GetSalt();
+            using var hmac = new System.Security.Cryptography.HMACSHA256(
+                System.Text.Encoding.UTF8.GetBytes(legacySalt));
+            var legacyHash = Convert.ToBase64String(
+                hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password)));
+            return legacyHash == storedHash;
+        }
+
+        var parts = storedHash.Split(':');
+        if (parts.Length != 2) return false;
+
+        var hash = ComputeHash(password, parts[0]);
+        return hash == parts[1];
+    }
+
+    private static string ComputeHash(string password, string salt)
+    {
+        var key = System.Security.Cryptography.Rfc2898DeriveBytes.Pbkdf2(
+            System.Text.Encoding.UTF8.GetBytes(password),
+            System.Text.Encoding.UTF8.GetBytes(salt + GetSalt()),
+            iterations: 100000,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            32);
+        return Convert.ToBase64String(key);
     }
 }
