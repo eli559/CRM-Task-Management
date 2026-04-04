@@ -1,0 +1,397 @@
+@page "/reports"
+@inject TaskService TaskService
+@inject AuthService AuthService
+@inject ProjectService ProjectService
+@inject AppState AppState
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h1><span class="icon icon-chart"></span> דוחות</h1>
+</div>
+
+@if (!AppState.IsAdmin)
+{
+    <div class="alert alert-error">אין לך הרשאה לצפות בדף זה.</div>
+}
+else
+{
+    <!-- Summary Cards -->
+    <div class="report-summary">
+        <div class="summary-card summary-total">
+            <div class="summary-icon"><span class="icon icon-clipboard"></span></div>
+            <div class="summary-data">
+                <div class="summary-number">@allTasks.Count</div>
+                <div class="summary-label">סה"כ משימות</div>
+            </div>
+        </div>
+        <div class="summary-card summary-active">
+            <div class="summary-icon"><span class="icon icon-refresh"></span></div>
+            <div class="summary-data">
+                <div class="summary-number">@allTasks.Count(t => t.Status == Models.TaskStatus.InProgress)</div>
+                <div class="summary-label">בטיפול</div>
+            </div>
+        </div>
+        <div class="summary-card summary-waiting">
+            <div class="summary-icon"><span class="icon icon-clock"></span></div>
+            <div class="summary-data">
+                <div class="summary-number">@allTasks.Count(t => t.Status == Models.TaskStatus.Waiting)</div>
+                <div class="summary-label">ממתינות</div>
+            </div>
+        </div>
+        <div class="summary-card summary-done">
+            <div class="summary-icon"><span class="icon icon-check"></span></div>
+            <div class="summary-data">
+                <div class="summary-number">@allTasks.Count(t => t.Status == Models.TaskStatus.Done)</div>
+                <div class="summary-label">הושלמו</div>
+            </div>
+        </div>
+        <div class="summary-card summary-rate">
+            <div class="summary-icon"><span class="icon icon-trending-up"></span></div>
+            <div class="summary-data">
+                <div class="summary-number">@(allTasks.Count > 0 ? (allTasks.Count(t => t.Status == Models.TaskStatus.Done) * 100 / allTasks.Count) : 0)%</div>
+                <div class="summary-label">אחוז השלמה</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+        <!-- Chart 1: Donut - Status -->
+        <div class="chart-card">
+            <div class="chart-card-header">
+                <h3>התפלגות לפי סטטוס</h3>
+            </div>
+            <div class="donut-chart-container">
+                <div class="donut-chart">
+                    @{
+                        var total = allTasks.Count > 0 ? allTasks.Count : 1;
+                        var newPct = allTasks.Count(t => t.Status == Models.TaskStatus.New) * 100.0 / total;
+                        var progressPct = allTasks.Count(t => t.Status == Models.TaskStatus.InProgress) * 100.0 / total;
+                        var waitPct = allTasks.Count(t => t.Status == Models.TaskStatus.Waiting) * 100.0 / total;
+                        var donePct = allTasks.Count(t => t.Status == Models.TaskStatus.Done) * 100.0 / total;
+                        var seg1 = newPct;
+                        var seg2 = seg1 + progressPct;
+                        var seg3 = seg2 + waitPct;
+                    }
+                    <svg viewBox="0 0 36 36" class="donut-svg">
+                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--bg-secondary)" stroke-width="3.5"/>
+                        @if (allTasks.Any())
+                        {
+                            <circle cx="18" cy="18" r="15.9" fill="none" stroke="#58a6ff" stroke-width="3.5"
+                                    stroke-dasharray="@newPct.ToString("0.##") @((100-newPct).ToString("0.##"))"
+                                    stroke-dashoffset="25" class="donut-segment"/>
+                            <circle cx="18" cy="18" r="15.9" fill="none" stroke="#bc8cff" stroke-width="3.5"
+                                    stroke-dasharray="@progressPct.ToString("0.##") @((100-progressPct).ToString("0.##"))"
+                                    stroke-dashoffset="@((25-seg1).ToString("0.##"))" class="donut-segment"/>
+                            <circle cx="18" cy="18" r="15.9" fill="none" stroke="#d29922" stroke-width="3.5"
+                                    stroke-dasharray="@waitPct.ToString("0.##") @((100-waitPct).ToString("0.##"))"
+                                    stroke-dashoffset="@((25-seg2).ToString("0.##"))" class="donut-segment"/>
+                            <circle cx="18" cy="18" r="15.9" fill="none" stroke="#3fb950" stroke-width="3.5"
+                                    stroke-dasharray="@donePct.ToString("0.##") @((100-donePct).ToString("0.##"))"
+                                    stroke-dashoffset="@((25-seg3).ToString("0.##"))" class="donut-segment"/>
+                        }
+                    </svg>
+                    <div class="donut-center">
+                        <span class="donut-center-number">@allTasks.Count</span>
+                        <span class="donut-center-label">משימות</span>
+                    </div>
+                </div>
+                <div class="donut-legend">
+                    <div class="legend-item"><span class="legend-dot" style="background:#58a6ff"></span> חדש <strong>@allTasks.Count(t => t.Status == Models.TaskStatus.New)</strong></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#bc8cff"></span> בטיפול <strong>@allTasks.Count(t => t.Status == Models.TaskStatus.InProgress)</strong></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#d29922"></span> ממתין <strong>@allTasks.Count(t => t.Status == Models.TaskStatus.Waiting)</strong></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#3fb950"></span> הושלם <strong>@allTasks.Count(t => t.Status == Models.TaskStatus.Done)</strong></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart 2: Priority bars -->
+        <div class="chart-card">
+            <div class="chart-card-header">
+                <h3>התפלגות לפי עדיפות</h3>
+            </div>
+            <div class="pro-bars">
+                @foreach (var priority in Enum.GetValues<TaskPriority>())
+                {
+                    var count = allTasks.Count(t => t.Priority == priority);
+                    var pct = allTasks.Count > 0 ? (count * 100.0 / allTasks.Count) : 0;
+                    var color = priority switch {
+                        TaskPriority.Low => "#3fb950",
+                        TaskPriority.Medium => "#eab308",
+                        TaskPriority.High => "#d29922",
+                        TaskPriority.Critical => "#f85149",
+                        _ => "#58a6ff"
+                    };
+                    <div class="pro-bar-item">
+                        <div class="pro-bar-header">
+                            <span class="pro-bar-label">@priority.ToHebrew()</span>
+                            <span class="pro-bar-count" style="color: @color">@count</span>
+                        </div>
+                        <div class="pro-bar-track">
+                            <div class="pro-bar-fill" style="width: @pct.ToString("0.#")%; background: linear-gradient(90deg, @color, @(color)99);"></div>
+                        </div>
+                        <span class="pro-bar-pct">@pct.ToString("0")%</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Chart 3: Per user - stacked -->
+        <div class="chart-card chart-card-wide">
+            <div class="chart-card-header">
+                <h3>ביצועי עובדים</h3>
+            </div>
+            <div class="user-chart">
+                @foreach (var user in users)
+                {
+                    var userTasks = allTasks.Where(t => t.AssigneeId == user.Id).ToList();
+                    var uTotal = userTasks.Count;
+                    var uNew = userTasks.Count(t => t.Status == Models.TaskStatus.New);
+                    var uProgress = userTasks.Count(t => t.Status == Models.TaskStatus.InProgress);
+                    var uWait = userTasks.Count(t => t.Status == Models.TaskStatus.Waiting);
+                    var uDone = userTasks.Count(t => t.Status == Models.TaskStatus.Done);
+                    var maxAll = users.Max(u => allTasks.Count(t => t.AssigneeId == u.Id));
+                    var barWidth = maxAll > 0 ? (uTotal * 100.0 / maxAll) : 0;
+                    <div class="user-bar-row">
+                        <div class="user-bar-name">
+                            <div class="user-avatar">@user.FullName[0]</div>
+                            <span>@user.FullName</span>
+                        </div>
+                        <div class="user-bar-track">
+                            <div class="user-bar-stack" style="width: @barWidth.ToString("0.#")%">
+                                @if (uDone > 0) { <div class="stack-seg" style="flex: @uDone; background: #3fb950;" title="הושלם: @uDone"></div> }
+                                @if (uProgress > 0) { <div class="stack-seg" style="flex: @uProgress; background: #bc8cff;" title="בטיפול: @uProgress"></div> }
+                                @if (uWait > 0) { <div class="stack-seg" style="flex: @uWait; background: #d29922;" title="ממתין: @uWait"></div> }
+                                @if (uNew > 0) { <div class="stack-seg" style="flex: @uNew; background: #58a6ff;" title="חדש: @uNew"></div> }
+                            </div>
+                        </div>
+                        <div class="user-bar-stats">
+                            <span class="user-bar-total">@uTotal</span>
+                            @if (uTotal > 0)
+                            {
+                                <span class="user-bar-done-pct">(@(uDone * 100 / uTotal)% <span class="icon icon-check"></span>)</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Chart 4: Per project -->
+        @if (projects.Any())
+        {
+            <div class="chart-card chart-card-wide">
+                <div class="chart-card-header">
+                    <h3>פרויקטים</h3>
+                </div>
+                <div class="project-chart">
+                    @foreach (var project in projects)
+                    {
+                        var pTasks = allTasks.Where(t => t.ProjectId == project.Id).ToList();
+                        var pTotal = pTasks.Count;
+                        var pDone = pTasks.Count(t => t.Status == Models.TaskStatus.Done);
+                        var pProgress = pTotal > 0 ? (pDone * 100.0 / pTotal) : 0;
+                        <div class="project-bar-item">
+                            <div class="project-bar-header">
+                                <span class="project-bar-name"><span class="icon icon-folder"></span> @project.Name</span>
+                                <span class="project-bar-stats">@pDone/@pTotal הושלמו</span>
+                            </div>
+                            <div class="project-progress-track">
+                                <div class="project-progress-fill" style="width: @pProgress.ToString("0.#")%"></div>
+                            </div>
+                            <span class="project-progress-pct">@pProgress.ToString("0")%</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Status Change Log -->
+    @if (statusLogs.Any())
+    {
+        <div class="chart-card chart-card-wide" style="margin-bottom: 24px;">
+            <div class="chart-card-header">
+                <h3>היסטוריית שינויי סטטוס</h3>
+                <span class="results-count">@statusLogs.Count שינויים אחרונים</span>
+            </div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>תאריך ושעה</th>
+                        <th>משתמש</th>
+                        <th>משימה</th>
+                        <th>מסטטוס</th>
+                        <th>לסטטוס</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in statusLogs)
+                    {
+                        <tr>
+                            <td>@log.ChangedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td><strong>@log.User.FullName</strong></td>
+                            <td>@log.Task.Title</td>
+                            <td><span class="badge @log.OldStatus.ToBadgeClass()">@log.OldStatus.ToHebrew()</span></td>
+                            <td><span class="badge @log.NewStatus.ToBadgeClass()">@log.NewStatus.ToHebrew()</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- Table -->
+    <h3 style="margin-top: 30px; margin-bottom: 16px;">כל המשימות</h3>
+
+    <div class="filter-bar">
+        <div class="filter-group">
+            <label>סטטוס</label>
+            <select @bind="filterStatus" @bind:after="LoadFiltered" class="form-control">
+                <option value="">הכל</option>
+                <option value="New">חדש</option>
+                <option value="InProgress">בטיפול</option>
+                <option value="Waiting">ממתין</option>
+                <option value="Done">הושלם</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>עדיפות</label>
+            <select @bind="filterPriority" @bind:after="LoadFiltered" class="form-control">
+                <option value="">הכל</option>
+                <option value="Low">נמוכה</option>
+                <option value="Medium">בינונית</option>
+                <option value="High">גבוהה</option>
+                <option value="Critical">קריטית</option>
+            </select>
+        </div>
+        <div class="filter-group filter-actions">
+            <button class="btn btn-secondary" @onclick="ClearFilters">נקה פילטרים</button>
+        </div>
+    </div>
+
+    @if (filteredTasks.Any())
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>כותרת</th>
+                    <th>פרויקט</th>
+                    <th>סטטוס</th>
+                    <th>עדיפות</th>
+                    <th>משויך ל</th>
+                    <th>תאריך יצירה</th>
+                    <th>פעולות</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var task in filteredTasks)
+                {
+                    <tr class="clickable-row @(task.Status == Models.TaskStatus.Done ? "row-done" : "")" @onclick="() => GoToTask(task.Id)">
+                        <td>@task.Id</td>
+                        <td class="task-title-cell">@task.Title</td>
+                        <td>@(task.Project?.Name ?? "—")</td>
+                        <td><span class="badge @task.Status.ToBadgeClass()">@task.Status.ToHebrew()</span></td>
+                        <td><span class="badge @task.Priority.ToBadgeClass()">@task.Priority.ToHebrew()</span></td>
+                        <td>@(task.Assignee?.FullName ?? "לא משויך")</td>
+                        <td>@task.CreatedAt.ToString("dd/MM/yyyy")</td>
+                        <td @onclick:stopPropagation="true">
+                            <button class="btn btn-sm btn-danger" @onclick="() => DeleteTask(task.Id)" title="מחק משימה">
+                                <span class="icon icon-trash"></span>
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div class="empty-state"><p>לא נמצאו משימות.</p></div>
+    }
+}
+
+@if (deleteConfirmId != null)
+{
+    var taskToDelete = allTasks.FirstOrDefault(t => t.Id == deleteConfirmId);
+    <div class="modal-overlay" @onclick="CancelDelete">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <h2>מחיקת משימה</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 8px;">
+                האם אתה בטוח שברצונך למחוק את המשימה?
+            </p>
+            <p style="margin-bottom: 20px;">
+                <strong>@(taskToDelete?.Title ?? "")</strong>
+            </p>
+            <p style="color: var(--danger); font-size: 0.85rem; margin-bottom: 20px;">
+                פעולה זו לא ניתנת לביטול!
+            </p>
+            <div class="modal-actions">
+                <button class="btn btn-danger" @onclick="ConfirmDelete">כן, מחק</button>
+                <button class="btn btn-secondary" @onclick="CancelDelete">ביטול</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<TaskItem> allTasks = new();
+    private List<TaskItem> filteredTasks = new();
+    private List<User> users = new();
+    private List<Project> projects = new();
+    private List<TaskStatusLog> statusLogs = new();
+    private string filterStatus = "";
+    private string filterPriority = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AppState.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        if (!AppState.IsAdmin) return;
+        users = (await AuthService.GetAllUsersAsync()).Where(u => u.IsApproved).ToList();
+        projects = await ProjectService.GetAllProjectsAsync();
+        allTasks = await TaskService.GetTasksAsync();
+        statusLogs = await TaskService.GetStatusLogsAsync();
+        filteredTasks = allTasks;
+    }
+
+    private void LoadFiltered()
+    {
+        filteredTasks = allTasks;
+        if (!string.IsNullOrEmpty(filterStatus))
+            filteredTasks = filteredTasks.Where(t => t.Status == Enum.Parse<Models.TaskStatus>(filterStatus)).ToList();
+        if (!string.IsNullOrEmpty(filterPriority))
+            filteredTasks = filteredTasks.Where(t => t.Priority == Enum.Parse<TaskPriority>(filterPriority)).ToList();
+    }
+
+    private void ClearFilters()
+    {
+        filterStatus = "";
+        filterPriority = "";
+        filteredTasks = allTasks;
+    }
+
+    private int? deleteConfirmId;
+
+    private void DeleteTask(int taskId)
+    {
+        deleteConfirmId = taskId;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (deleteConfirmId == null) return;
+        await TaskService.DeleteTaskAsync(deleteConfirmId.Value);
+        deleteConfirmId = null;
+        allTasks = await TaskService.GetTasksAsync();
+        LoadFiltered();
+        AppState.ShowToast("המשימה נמחקה", "error");
+    }
+
+    private void CancelDelete()
+    {
+        deleteConfirmId = null;
+    }
+
+    private void GoToTask(int id) => Nav.NavigateTo($"/tasks/{id}");
+}

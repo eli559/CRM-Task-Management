@@ -1,0 +1,112 @@
+@page "/"
+@inject TaskService TaskService
+@inject AppState AppState
+@inject NavigationManager Nav
+
+<h1>דף הבית</h1>
+<p class="page-subtitle">שלום, @AppState.CurrentUser?.FullName! הנה סיכום המשימות שלך.</p>
+
+<div class="stats-grid">
+    <div class="stat-card stat-new">
+        <div class="stat-number">@GetCount(Models.TaskStatus.New)</div>
+        <div class="stat-label">חדשות</div>
+    </div>
+    <div class="stat-card stat-progress">
+        <div class="stat-number">@GetCount(Models.TaskStatus.InProgress)</div>
+        <div class="stat-label">בטיפול</div>
+    </div>
+    <div class="stat-card stat-waiting">
+        <div class="stat-number">@GetCount(Models.TaskStatus.Waiting)</div>
+        <div class="stat-label">ממתינות</div>
+    </div>
+    <div class="stat-card stat-done">
+        <div class="stat-number">@GetCount(Models.TaskStatus.Done)</div>
+        <div class="stat-label">הושלמו</div>
+    </div>
+</div>
+
+<div class="dashboard-sections">
+    <div class="dashboard-section">
+        <h3>משימות שהוקצו לי</h3>
+        @if (myTasks.Any())
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>כותרת</th>
+                        <th>סטטוס</th>
+                        <th>עדיפות</th>
+                        <th>תאריך יעד</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var task in myTasks.Take(10))
+                    {
+                        <tr class="clickable-row" @onclick="() => GoToTask(task.Id)">
+                            <td>@task.Title</td>
+                            <td><span class="badge @task.Status.ToBadgeClass()">@task.Status.ToHebrew()</span></td>
+                            <td><span class="badge @task.Priority.ToBadgeClass()">@task.Priority.ToHebrew()</span></td>
+                            <td>@(task.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="empty-state">אין משימות שהוקצו לך כרגע.</p>
+        }
+    </div>
+
+    <div class="dashboard-section">
+        <h3>משימות שיצרתי</h3>
+        @if (createdTasks.Any())
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>כותרת</th>
+                        <th>סטטוס</th>
+                        <th>משויך ל</th>
+                        <th>תאריך יצירה</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var task in createdTasks.Take(10))
+                    {
+                        <tr class="clickable-row" @onclick="() => GoToTask(task.Id)">
+                            <td>@task.Title</td>
+                            <td><span class="badge @task.Status.ToBadgeClass()">@task.Status.ToHebrew()</span></td>
+                            <td>@(task.Assignee?.FullName ?? "לא משויך")</td>
+                            <td>@task.CreatedAt.ToString("dd/MM/yyyy")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="empty-state">לא יצרת משימות עדיין.</p>
+        }
+    </div>
+</div>
+
+@code {
+    private Dictionary<Models.TaskStatus, int> statusCounts = new();
+    private List<TaskItem> myTasks = new();
+    private List<TaskItem> createdTasks = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AppState.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+
+        statusCounts = await TaskService.GetStatusCountsAsync();
+        myTasks = await TaskService.GetTasksAsync(new TaskFilter { AssigneeId = AppState.CurrentUser!.Id });
+        createdTasks = await TaskService.GetTasksAsync(new TaskFilter { CreatorId = AppState.CurrentUser!.Id });
+    }
+
+    private int GetCount(Models.TaskStatus status) =>
+        statusCounts.TryGetValue(status, out var count) ? count : 0;
+
+    private void GoToTask(int id) => Nav.NavigateTo($"/tasks/{id}");
+}

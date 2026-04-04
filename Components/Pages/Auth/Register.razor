@@ -1,0 +1,112 @@
+@page "/register"
+@inject AuthService AuthService
+@inject AppState AppState
+@inject NavigationManager Nav
+
+<div class="auth-card">
+    <img src="images/logo.svg" alt="DIGITALCRAFT" class="auth-logo" />
+    <h2>הרשמה למערכת</h2>
+    <p class="auth-subtitle">צור חשבון חדש</p>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-error">@errorMessage</div>
+    }
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success">@successMessage</div>
+    }
+
+    <EditForm Model="model" OnValidSubmit="HandleRegister" FormName="register">
+        <DataAnnotationsValidator />
+        <div class="form-group">
+            <label>שם משתמש (לכניסה למערכת)</label>
+            <InputText @bind-Value="model.Username" class="form-control" placeholder="הכנס שם משתמש" />
+        </div>
+        <div class="form-group">
+            <label>שם מלא (שם העובד)</label>
+            <InputText @bind-Value="model.FullName" class="form-control" placeholder="הכנס שם מלא" />
+        </div>
+        <div class="form-group">
+            <label>אימייל</label>
+            <InputText @bind-Value="model.Email" class="form-control" placeholder="הכנס כתובת אימייל" />
+        </div>
+        <div class="form-group">
+            <label>סיסמה</label>
+            <div class="input-password-wrap">
+                <InputText @bind-Value="model.Password" type="@(showPassword ? "text" : "password")" class="form-control" placeholder="הכנס סיסמה (מינימום 6 תווים)" />
+                <button type="button" class="btn-eye" @onclick="() => showPassword = !showPassword" tabindex="-1">
+                    @if (showPassword)
+                    {
+                        <span class="icon icon-eye-off"></span>
+                    }
+                    else
+                    {
+                        <span class="icon icon-eye"></span>
+                    }
+                </button>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" disabled="@isLoading">
+            @(isLoading ? "נרשם..." : "הרשמה")
+        </button>
+    </EditForm>
+
+    <p class="auth-link">
+        כבר יש לך חשבון? <a href="/login">כניסה</a>
+    </p>
+</div>
+
+@code {
+    private RegisterModel model = new();
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+    private bool isLoading;
+    private bool showPassword;
+
+    private async Task HandleRegister()
+    {
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+        isLoading = true;
+
+        if (string.IsNullOrWhiteSpace(model.Username) || string.IsNullOrWhiteSpace(model.Password) ||
+            string.IsNullOrWhiteSpace(model.FullName))
+        {
+            errorMessage = "יש למלא את כל השדות הנדרשים";
+            isLoading = false;
+            return;
+        }
+
+        if (model.Password.Length < 6)
+        {
+            errorMessage = "הסיסמה חייבת להכיל לפחות 6 תווים";
+            isLoading = false;
+            return;
+        }
+
+        var (success, error) = await AuthService.RegisterAsync(
+            model.Username, model.Password, model.FullName, model.Email);
+
+        if (success)
+        {
+            successMessage = "ההרשמה הצליחה! החשבון ממתין לאישור מנהל המערכת.";
+            await Task.Delay(3000);
+            Nav.NavigateTo("/login");
+        }
+        else
+        {
+            errorMessage = error;
+        }
+
+        isLoading = false;
+    }
+
+    private class RegisterModel
+    {
+        public string Username { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+}

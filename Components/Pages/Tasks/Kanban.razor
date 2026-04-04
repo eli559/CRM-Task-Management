@@ -1,0 +1,219 @@
+@page "/kanban"
+@inject TaskService TaskService
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <h1>לוח קנבן</h1>
+    <a href="/tasks/create" class="btn btn-primary"><span class="icon icon-plus"></span> משימה חדשה</a>
+</div>
+
+<div class="kanban-board" id="kanbanBoard">
+    @foreach (var status in Enum.GetValues<Models.TaskStatus>())
+    {
+        var statusTasks = GetTasksByStatus(status);
+
+        <div class="kanban-column" data-status="@status">
+            <div class="kanban-header @status.ToBadgeClass()">
+                <h3>@status.ToHebrew()</h3>
+                <span class="kanban-count">@statusTasks.Count</span>
+            </div>
+            <div class="kanban-cards" data-status="@status">
+                @foreach (var task in statusTasks)
+                {
+                    <div class="kanban-card @(task.AssigneeId == AppState.CurrentUser?.Id || AppState.IsAdmin ? "draggable-card" : "no-drag")" data-task-id="@task.Id">
+                        @if (task.Status == Models.TaskStatus.New && task.AssigneeId == AppState.CurrentUser?.Id)
+                        {
+                            <span class="kanban-card-new-dot"></span>
+                        }
+                        @if (task.TaskLabels.Any())
+                        {
+                            <div class="kanban-card-labels">
+                                @foreach (var tl in task.TaskLabels)
+                                {
+                                    <span class="label-chip-mini" style="--label-color: @tl.Label.Color">@tl.Label.Name</span>
+                                }
+                            </div>
+                        }
+                        <div class="kanban-card-title">@task.Title</div>
+                        <div class="kanban-card-creator">נוצר ע"י @task.Creator.FullName</div>
+                        <div class="kanban-card-meta">
+                            <span class="badge @task.Priority.ToBadgeClass()">@task.Priority.ToHebrew()</span>
+                            <span class="kanban-card-assignee">@(task.Assignee?.FullName ?? "לא משויך")</span>
+                        </div>
+                        @if (task.Status == Models.TaskStatus.Waiting && !string.IsNullOrEmpty(task.WaitingReason))
+                        {
+                            <div class="waiting-reason"><span class="icon icon-clock"></span> @task.WaitingReason</div>
+                        }
+                        @if (task.SubTasks.Any())
+                        {
+                            var done = task.SubTasks.Count(s => s.Status == Models.TaskStatus.Done);
+                            var tot = task.SubTasks.Count;
+                            <div class="kanban-subtask-progress">
+                                <div class="subtask-progress-bar-mini">
+                                    <div class="subtask-progress-fill" style="width: @(tot > 0 ? done * 100 / tot : 0)%"></div>
+                                </div>
+                                <span>@done/@tot</span>
+                            </div>
+                        }
+                        @if (task.DueDate.HasValue)
+                        {
+                            <div class="kanban-card-due @(task.DueDate < DateTime.Now ? "overdue" : "")">
+                                <span class="icon icon-calendar"></span> @task.DueDate.Value.ToString("dd/MM/yyyy")
+                            </div>
+                        }
+                    </div>
+                }
+                @if (!statusTasks.Any())
+                {
+                    <div class="kanban-empty">גרור משימה לכאן</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@if (showWaitingModal)
+{
+    <div class="modal-overlay" @onclick="CloseWaitingModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <h2><span class="icon icon-clock"></span> העברה להמתנה</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                משימה: <strong>@waitingTask?.Title</strong>
+            </p>
+
+            @if (!string.IsNullOrEmpty(waitingError))
+            {
+                <div class="alert alert-error">@waitingError</div>
+            }
+
+            <div class="form-group">
+                <label>סיבת ההמתנה *</label>
+                <textarea @bind="waitingReason" class="form-control" rows="3"
+                          placeholder="לדוגמא: מחכים לקניית שרת, ממתינים לאישור לקוח..."></textarea>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-primary" @onclick="ConfirmWaiting">העבר להמתנה</button>
+                <button class="btn btn-secondary" @onclick="CancelWaiting">ביטול</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<TaskItem> allTasks = new();
+    private DotNetObjectReference<Kanban>? _objRef;
+
+    // Waiting modal
+    private bool showWaitingModal;
+    private TaskItem? waitingTask;
+    private string waitingReason = "";
+    private string waitingError = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AppState.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        allTasks = await TaskService.GetTasksAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _objRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("initKanbanDragDrop", _objRef);
+        }
+    }
+
+    [JSInvokable]
+    public async Task MoveTask(int taskId, string newStatusStr)
+    {
+        if (!Enum.TryParse<Models.TaskStatus>(newStatusStr, out var newStatus)) return;
+
+        var task = allTasks.FirstOrDefault(t => t.Id == taskId);
+        if (task == null || task.Status == newStatus) return;
+
+        // If moving to Waiting, show modal for reason
+        if (newStatus == Models.TaskStatus.Waiting)
+        {
+            waitingTask = task;
+            waitingReason = "";
+            waitingError = "";
+            showWaitingModal = true;
+            StateHasChanged();
+            return;
+        }
+
+        task.Status = newStatus;
+        if (newStatus != Models.TaskStatus.Waiting)
+            task.WaitingReason = null;
+        await TaskService.UpdateTaskAsync(task, AppState.CurrentUser?.Id);
+        AppState.ShowToast($"המשימה הועברה ל{newStatus.ToHebrew()}");
+        allTasks = await TaskService.GetTasksAsync();
+        StateHasChanged();
+
+        await Task.Delay(100);
+        await JS.InvokeVoidAsync("initKanbanDragDrop", _objRef);
+    }
+
+    private async Task ConfirmWaiting()
+    {
+        if (string.IsNullOrWhiteSpace(waitingReason))
+        {
+            waitingError = "חובה לרשום סיבת המתנה";
+            return;
+        }
+
+        if (waitingTask == null) return;
+
+        waitingTask.Status = Models.TaskStatus.Waiting;
+        waitingTask.WaitingReason = waitingReason.Trim();
+        await TaskService.UpdateTaskAsync(waitingTask, AppState.CurrentUser?.Id);
+
+        showWaitingModal = false;
+        waitingTask = null;
+        waitingReason = "";
+        waitingError = "";
+
+        AppState.ShowToast("המשימה הועברה להמתנה");
+        allTasks = await TaskService.GetTasksAsync();
+        StateHasChanged();
+
+        await Task.Delay(100);
+        await JS.InvokeVoidAsync("initKanbanDragDrop", _objRef);
+    }
+
+    private async Task CancelWaiting()
+    {
+        showWaitingModal = false;
+        waitingTask = null;
+        // Reload to reset position
+        allTasks = await TaskService.GetTasksAsync();
+        StateHasChanged();
+
+        await Task.Delay(100);
+        await JS.InvokeVoidAsync("initKanbanDragDrop", _objRef);
+    }
+
+    private void CloseWaitingModal()
+    {
+        // Same as cancel
+        _ = CancelWaiting();
+    }
+
+    [JSInvokable]
+    public void NavigateToTask(int taskId)
+    {
+        Nav.NavigateTo($"/tasks/{taskId}");
+    }
+
+    private List<TaskItem> GetTasksByStatus(Models.TaskStatus status) =>
+        allTasks.Where(t => t.Status == status).ToList();
+
+    public void Dispose()
+    {
+        _objRef?.Dispose();
+    }
+}

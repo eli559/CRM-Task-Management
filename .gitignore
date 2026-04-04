@@ -1,0 +1,8 @@
+bin/
+obj/
+crm.db
+crm.db-wal
+crm.db-shm
+*.user
+.vs/
+.idea/

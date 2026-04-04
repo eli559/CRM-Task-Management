@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DIGITALCRAFT CRM - ניהול משימות</title>
+    <base href="/" />
+    <link href="css/app.css" rel="stylesheet" />
+    <HeadOutlet @rendermode="@Microsoft.AspNetCore.Components.Web.RenderMode.InteractiveServer" />
+</head>
+<body>
+    <Routes @rendermode="@Microsoft.AspNetCore.Components.Web.RenderMode.InteractiveServer" />
+    <script src="_framework/blazor.web.js"></script>
+    <script>
+        window.initKanbanDragDrop = function (dotnetRef) {
+            var cards = document.querySelectorAll('.kanban-card');
+            var columns = document.querySelectorAll('.kanban-cards');
+            var draggedEl = null;
+            var draggedId = null;
+            var isDragging = false;
+
+            cards.forEach(function (card) {
+                if (!card.classList.contains('draggable-card')) {
+                    card.style.cursor = 'default';
+                    card.addEventListener('click', function () {
+                        var id = parseInt(card.getAttribute('data-task-id'));
+                        dotnetRef.invokeMethodAsync('NavigateToTask', id);
+                    });
+                    return;
+                }
+                card.setAttribute('draggable', 'true');
+                card.style.cursor = 'grab';
+
+                card.addEventListener('dragstart', function (e) {
+                    isDragging = true;
+                    draggedEl = card;
+                    draggedId = card.getAttribute('data-task-id');
+                    card.style.opacity = '0.5';
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', draggedId);
+                });
+
+                card.addEventListener('dragend', function () {
+                    card.style.opacity = '1';
+                    isDragging = false;
+                    document.querySelectorAll('.kanban-column').forEach(function (col) {
+                        col.classList.remove('drag-over');
+                    });
+                });
+
+                card.addEventListener('click', function (e) {
+                    if (!isDragging) {
+                        var id = parseInt(card.getAttribute('data-task-id'));
+                        dotnetRef.invokeMethodAsync('NavigateToTask', id);
+                    }
+                });
+            });
+
+            columns.forEach(function (col) {
+                col.addEventListener('dragover', function (e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    col.closest('.kanban-column').classList.add('drag-over');
+                });
+
+                col.addEventListener('dragleave', function (e) {
+                    col.closest('.kanban-column').classList.remove('drag-over');
+                });
+
+                col.addEventListener('drop', function (e) {
+                    e.preventDefault();
+                    col.closest('.kanban-column').classList.remove('drag-over');
+                    var status = col.getAttribute('data-status');
+                    var taskId = parseInt(e.dataTransfer.getData('text/plain'));
+                    if (taskId && status) {
+                        dotnetRef.invokeMethodAsync('MoveTask', taskId, status);
+                    }
+                });
+            });
+        };
+
+        window.updateTabBadge = function (count) {
+            if (count > 0) {
+                document.title = '(' + count + ') DIGITALCRAFT CRM - ניהול משימות';
+            } else {
+                document.title = 'DIGITALCRAFT CRM - ניהול משימות';
+            }
+        };
+
+        window.saveSession = function (userId) {
+            localStorage.setItem('crm_user_id', userId);
+        };
+
+        window.getSession = function () {
+            return localStorage.getItem('crm_user_id');
+        };
+
+        window.clearSession = function () {
+            localStorage.removeItem('crm_user_id');
+        };
+
+        window.playNotificationSound = function () {
+            try {
+                var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                var o = ctx.createOscillator();
+                var g = ctx.createGain();
+                o.connect(g);
+                g.connect(ctx.destination);
+                o.type = 'sine';
+                o.frequency.setValueAtTime(880, ctx.currentTime);
+                o.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+                o.frequency.setValueAtTime(880, ctx.currentTime + 0.2);
+                g.gain.setValueAtTime(0.3, ctx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+                o.start(ctx.currentTime);
+                o.stop(ctx.currentTime + 0.4);
+            } catch (e) { }
+        };
+    </script>
+</body>
+</html>

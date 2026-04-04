@@ -1,0 +1,150 @@
+@page "/admin/projects"
+@inject ProjectService ProjectService
+@inject TaskService TaskService
+@inject AppState AppState
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h1><span class="icon icon-folder"></span> ניהול פרויקטים</h1>
+</div>
+
+@if (!AppState.IsAdmin)
+{
+    <div class="alert alert-error">אין לך הרשאה לצפות בדף זה.</div>
+}
+else
+{
+    <div class="form-card" style="margin-bottom: 24px;">
+        <h3>הוסף פרויקט חדש</h3>
+        <div class="add-project-inline" style="margin-top: 12px;">
+            <input type="text" class="form-control" @bind="newProjectName" placeholder="שם הפרויקט" @onkeydown="OnKeyDown" />
+            <button class="btn btn-primary" @onclick="AddProject"><span class="icon icon-plus"></span> הוסף</button>
+        </div>
+    </div>
+
+    <div class="results-count">@projects.Count פרויקטים פעילים</div>
+
+    @if (projects.Any())
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>שם הפרויקט</th>
+                    <th>משימות</th>
+                    <th>פעילות</th>
+                    <th>הושלמו</th>
+                    <th>תאריך יצירה</th>
+                    <th>פעולות</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var project in projects)
+                {
+                    var taskCount = allTasks.Count(t => t.ProjectId == project.Id);
+                    var activeCount = allTasks.Count(t => t.ProjectId == project.Id && t.Status != Models.TaskStatus.Done);
+                    var doneCount = allTasks.Count(t => t.ProjectId == project.Id && t.Status == Models.TaskStatus.Done);
+                    <tr>
+                        <td>@project.Id</td>
+                        <td>
+                            @if (editingId == project.Id)
+                            {
+                                <input type="text" class="form-control" @bind="editName" style="max-width: 250px;" />
+                            }
+                            else
+                            {
+                                <strong>@project.Name</strong>
+                            }
+                        </td>
+                        <td>@taskCount</td>
+                        <td><span class="badge badge-progress">@activeCount</span></td>
+                        <td><span class="badge badge-done">@doneCount</span></td>
+                        <td>@project.CreatedAt.ToString("dd/MM/yyyy")</td>
+                        <td>
+                            <div class="header-actions">
+                                @if (editingId == project.Id)
+                                {
+                                    <button class="btn btn-sm btn-primary" @onclick="() => SaveEdit(project.Id)"><span class="icon icon-save"></span> שמור</button>
+                                    <button class="btn btn-sm btn-secondary" @onclick="CancelEdit">ביטול</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline" @onclick="() => StartEdit(project)" title="עריכה"><span class="icon icon-edit"></span></button>
+                                    <button class="btn btn-sm btn-danger" @onclick="() => DeleteProject(project.Id)" title="מחק"><span class="icon icon-trash"></span></button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div class="empty-state"><p>אין פרויקטים עדיין. הוסף פרויקט חדש למעלה.</p></div>
+    }
+}
+
+@code {
+    private List<Project> projects = new();
+    private List<TaskItem> allTasks = new();
+    private string newProjectName = "";
+    private int? editingId;
+    private string editName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AppState.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        if (!AppState.IsAdmin) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        projects = await ProjectService.GetAllProjectsAsync();
+        allTasks = await TaskService.GetTasksAsync();
+    }
+
+    private async Task AddProject()
+    {
+        if (string.IsNullOrWhiteSpace(newProjectName)) return;
+        await ProjectService.CreateProjectAsync(newProjectName.Trim());
+        newProjectName = "";
+        await LoadData();
+        AppState.ShowToast("הפרויקט נוצר בהצלחה");
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddProject();
+    }
+
+    private void StartEdit(Project project)
+    {
+        editingId = project.Id;
+        editName = project.Name;
+    }
+
+    private void CancelEdit()
+    {
+        editingId = null;
+        editName = "";
+    }
+
+    private async Task SaveEdit(int projectId)
+    {
+        if (string.IsNullOrWhiteSpace(editName)) return;
+        await ProjectService.UpdateProjectAsync(projectId, editName.Trim());
+        editingId = null;
+        editName = "";
+        await LoadData();
+        AppState.ShowToast("הפרויקט עודכן בהצלחה");
+    }
+
+    private async Task DeleteProject(int projectId)
+    {
+        await ProjectService.DeleteProjectAsync(projectId);
+        await LoadData();
+        AppState.ShowToast("הפרויקט הוסר", "error");
+    }
+}

@@ -1,0 +1,529 @@
+@page "/tasks/{TaskId:int}"
+@inject TaskService TaskService
+@inject AuthService AuthService
+@inject ProjectService ProjectService
+@inject AppState AppState
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@if (task == null)
+{
+    <p>טוען...</p>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <div class="task-number-display">@task.TaskNumber</div>
+            <h1>@task.Title</h1>
+            @if (task.ParentTask != null)
+            {
+                <div class="parent-task-link">
+                    <span class="icon icon-folder"></span> תת-משימה של:
+                    <a href="/tasks/@task.ParentTask.Id">@task.ParentTask.TaskNumber - @task.ParentTask.Title</a>
+                </div>
+            }
+        </div>
+        <div class="header-actions">
+            <a href="/tasks/edit/@task.Id" class="btn btn-primary"><span class="icon icon-edit"></span> עריכה</a>
+            <button class="btn btn-secondary" @onclick="GoBack"><span class="icon icon-refresh"></span> חזרה</button>
+        </div>
+    </div>
+
+    <div class="detail-grid">
+        <div class="detail-main">
+            <div class="detail-card">
+                <h3>פרטי משימה</h3>
+                <div class="detail-field">
+                    <label>תיאור</label>
+                    <p>@(string.IsNullOrEmpty(task.Description) ? "אין תיאור" : task.Description)</p>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-field">
+                        <label>סוג משימה</label>
+                        <span class="badge type-badge @task.Type.ToBadgeClass()"><span class="icon @task.Type.ToIconClass()"></span> @task.Type.ToHebrew()</span>
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-field">
+                        <label>סטטוס</label>
+                        <span class="badge @task.Status.ToBadgeClass()">@task.Status.ToHebrew()</span>
+                        @if (task.Status == Models.TaskStatus.Waiting && !string.IsNullOrEmpty(task.WaitingReason))
+                        {
+                            <div class="waiting-reason"><span class="icon icon-clock"></span> @task.WaitingReason</div>
+                        }
+                    </div>
+                    <div class="detail-field">
+                        <label>עדיפות</label>
+                        <span class="badge @task.Priority.ToBadgeClass()">@task.Priority.ToHebrew()</span>
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-field">
+                        <label>יוצר</label>
+                        <p>@task.Creator.FullName</p>
+                    </div>
+                    <div class="detail-field">
+                        <label>משויך ל</label>
+                        <p>@(task.Assignee?.FullName ?? "לא משויך")</p>
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-field">
+                        <label>פרויקט</label>
+                        <p>@(task.Project?.Name ?? "לא משויך")</p>
+                    </div>
+                    <div class="detail-field">
+                        <label>תאריך יעד</label>
+                        <p>@(task.DueDate?.ToString("dd/MM/yyyy") ?? "לא הוגדר")</p>
+                    </div>
+                </div>
+                @if (task.TaskLabels.Any())
+                {
+                    <div class="detail-field">
+                        <label>תגיות</label>
+                        <div class="task-labels-inline">
+                            @foreach (var tl in task.TaskLabels)
+                            {
+                                <span class="label-chip-display" style="--label-color: @tl.Label.Color">@tl.Label.Name</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="detail-card">
+                <h3>שינוי מהיר של סטטוס</h3>
+                <div class="status-buttons">
+                    @foreach (var status in Enum.GetValues<Models.TaskStatus>())
+                    {
+                        <button class="btn @(task.Status == status ? "btn-primary" : "btn-outline") btn-sm"
+                                @onclick="() => ChangeStatus(status)">
+                            @status.ToHebrew()
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <!-- Sub Tasks -->
+            <div class="detail-card">
+                <div class="subtasks-header">
+                    <h3>תתי-משימות (@task.SubTasks.Count)</h3>
+                    @if (task.SubTasks.Any())
+                    {
+                        var doneCount = task.SubTasks.Count(s => s.Status == Models.TaskStatus.Done);
+                        var totalSubs = task.SubTasks.Count;
+                        var pct = totalSubs > 0 ? (doneCount * 100 / totalSubs) : 0;
+                        <span class="subtask-progress-text">@doneCount/@totalSubs (@pct%)</span>
+                    }
+                </div>
+
+                @if (task.SubTasks.Any())
+                {
+                    <div class="subtask-progress-bar">
+                        <div class="subtask-progress-fill" style="width: @(task.SubTasks.Count > 0 ? (task.SubTasks.Count(s => s.Status == Models.TaskStatus.Done) * 100 / task.SubTasks.Count) : 0)%"></div>
+                    </div>
+
+                    <div class="subtasks-list">
+                        @foreach (var sub in task.SubTasks.OrderBy(s => s.Status == Models.TaskStatus.Done).ThenByDescending(s => s.CreatedAt))
+                        {
+                            <div class="subtask-item @(sub.Status == Models.TaskStatus.Done ? "subtask-done" : "")">
+                                <div class="subtask-info">
+                                    <a href="/tasks/@sub.Id" class="subtask-title">
+                                        <strong>@sub.TaskNumber</strong> @sub.Title
+                                    </a>
+                                    <div class="subtask-meta">
+                                        <span class="badge @sub.Status.ToBadgeClass()">@sub.Status.ToHebrew()</span>
+                                        <span>@(sub.Assignee?.FullName ?? "לא משויך")</span>
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-outline" @onclick="() => UnlinkSubTask(sub.Id)" title="נתק תת-משימה">
+                                    <span class="icon icon-x"></span>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="subtask-actions">
+                    <button class="btn btn-sm btn-primary" @onclick="OpenCreateSub">
+                        <span class="icon icon-plus"></span> צור תת-משימה
+                    </button>
+                    <button class="btn btn-sm btn-outline" @onclick="OpenLinkModal">
+                        <span class="icon icon-folder"></span> שייך משימה קיימת
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="detail-sidebar">
+            <div class="detail-card">
+                <h3>תגובות (@task.Comments.Count)</h3>
+
+                <div class="comment-form">
+                    <textarea @bind="newComment" class="form-control" rows="3" placeholder="כתוב תגובה..."></textarea>
+                    <button class="btn btn-primary btn-sm" @onclick="AddComment">
+                        הוסף תגובה
+                    </button>
+                </div>
+
+                <div class="comments-list">
+                    @foreach (var comment in task.Comments)
+                    {
+                        <div class="comment">
+                            <div class="comment-header">
+                                <strong>@comment.User.FullName</strong>
+                                <small>@comment.CreatedAt.ToString("dd/MM/yyyy HH:mm")</small>
+                            </div>
+                            <p>@comment.Content</p>
+                        </div>
+                    }
+                    @if (!task.Comments.Any())
+                    {
+                        <p class="empty-state">אין תגובות עדיין.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal: Create Sub Task - Full form *@
+@if (showCreateSub)
+{
+    <div class="modal-overlay" @onclick="() => showCreateSub = false">
+        <div class="modal-card modal-large" @onclick:stopPropagation="true">
+            <h2><span class="icon icon-plus"></span> יצירת תת-משימה</h2>
+
+            @if (!string.IsNullOrEmpty(subError))
+            {
+                <div class="alert alert-error">@subError</div>
+            }
+
+            <div class="form-group">
+                <label>כותרת *</label>
+                <input type="text" class="form-control" @bind="subModel.Title" placeholder="כותרת תת-המשימה" />
+            </div>
+
+            <div class="form-group">
+                <label>תיאור</label>
+                <textarea class="form-control" @bind="subModel.Description" rows="3" placeholder="תיאור מפורט..."></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>פרויקט *</label>
+                    <select class="form-control" @bind="subProjectId">
+                        <option value="">בחר פרויקט</option>
+                        @foreach (var p in projects)
+                        {
+                            <option value="@p.Id">@p.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>עדיפות</label>
+                    <select class="form-control" @bind="subModel.Priority">
+                        <option value="@TaskPriority.Low">נמוכה</option>
+                        <option value="@TaskPriority.Medium">בינונית</option>
+                        <option value="@TaskPriority.High">גבוהה</option>
+                        <option value="@TaskPriority.Critical">קריטית</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>סוג</label>
+                    <select class="form-control" @bind="subModel.Type">
+                        <option value="@TaskType.Task">משימה</option>
+                        <option value="@TaskType.Bug">באג</option>
+                        <option value="@TaskType.Feature">פיצ'ר</option>
+                        <option value="@TaskType.Improvement">שיפור</option>
+                        <option value="@TaskType.Urgent">דחוף</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>משויך ל *</label>
+                    <select class="form-control" @bind="subAssigneeId">
+                        <option value="">בחר עובד</option>
+                        @foreach (var user in users)
+                        {
+                            <option value="@user.Id">@user.FullName</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>תאריך יעד</label>
+                    <input type="date" class="form-control" @bind="subDueDate" />
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-primary" @onclick="CreateSubTask">צור תת-משימה</button>
+                <button class="btn btn-secondary" @onclick="() => showCreateSub = false">ביטול</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Modal: Link Existing Task - With filters *@
+@if (showLinkModal)
+{
+    <div class="modal-overlay" @onclick="() => showLinkModal = false">
+        <div class="modal-card modal-large" @onclick:stopPropagation="true">
+            <h2><span class="icon icon-folder"></span> שייך משימה קיימת</h2>
+
+            <div class="filter-bar" style="margin-bottom: 16px;">
+                <div class="filter-group">
+                    <label>חיפוש</label>
+                    <input type="text" class="form-control" @bind="linkSearch" @bind:event="oninput" @bind:after="FilterLinkTasks" placeholder="חפש לפי כותרת או מספר..." />
+                </div>
+                <div class="filter-group">
+                    <label>סטטוס</label>
+                    <select class="form-control" @bind="linkFilterStatus" @bind:after="FilterLinkTasks">
+                        <option value="">הכל</option>
+                        <option value="New">חדש</option>
+                        <option value="InProgress">בטיפול</option>
+                        <option value="Waiting">ממתין</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>משויך ל</label>
+                    <select class="form-control" @bind="linkFilterAssignee" @bind:after="FilterLinkTasks">
+                        <option value="">הכל</option>
+                        @foreach (var user in users)
+                        {
+                            <option value="@user.Id">@user.FullName</option>
+                        }
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>פרויקט</label>
+                    <select class="form-control" @bind="linkFilterProject" @bind:after="FilterLinkTasks">
+                        <option value="">הכל</option>
+                        @foreach (var p in projects)
+                        {
+                            <option value="@p.Id">@p.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="results-count">@filteredLinkTasks.Count משימות זמינות · @selectedLinkIds.Count נבחרו</div>
+
+            @if (filteredLinkTasks.Any())
+            {
+                <div class="link-tasks-table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width:40px;"></th>
+                                <th>#</th>
+                                <th>כותרת</th>
+                                <th>סטטוס</th>
+                                <th>עדיפות</th>
+                                <th>משויך ל</th>
+                                <th>פרויקט</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var t in filteredLinkTasks)
+                            {
+                                var isSelected = selectedLinkIds.Contains(t.Id);
+                                <tr class="@(isSelected ? "link-row-selected" : "")" @onclick="() => ToggleLinkSelection(t.Id)">
+                                    <td>
+                                        <div class="link-checkbox @(isSelected ? "link-checked" : "")">
+                                            @if (isSelected) { <span class="icon icon-check"></span> }
+                                        </div>
+                                    </td>
+                                    <td><strong>@t.TaskNumber</strong></td>
+                                    <td>@t.Title</td>
+                                    <td><span class="badge @t.Status.ToBadgeClass()">@t.Status.ToHebrew()</span></td>
+                                    <td><span class="badge @t.Priority.ToBadgeClass()">@t.Priority.ToHebrew()</span></td>
+                                    <td>@(t.Assignee?.FullName ?? "—")</td>
+                                    <td>@(t.Project?.Name ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="empty-state">אין משימות זמינות לשיוך.</p>
+            }
+
+            <div class="modal-actions">
+                <button class="btn btn-primary" @onclick="LinkSelectedTasks" disabled="@(!selectedLinkIds.Any())">
+                    <span class="icon icon-folder"></span> שייך @selectedLinkIds.Count משימות
+                </button>
+                <button class="btn btn-secondary" @onclick="() => showLinkModal = false">ביטול</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int TaskId { get; set; }
+
+    private TaskItem? task;
+    private string newComment = string.Empty;
+    private List<User> users = new();
+    private List<Project> projects = new();
+
+    // Create sub task
+    private bool showCreateSub;
+    private TaskItem subModel = new();
+    private string subAssigneeId = "";
+    private string subProjectId = "";
+    private DateTime? subDueDate;
+    private string subError = "";
+
+    // Link existing
+    private bool showLinkModal;
+    private List<TaskItem> allAvailableTasks = new();
+    private List<TaskItem> filteredLinkTasks = new();
+    private HashSet<int> selectedLinkIds = new();
+    private string linkSearch = "";
+    private string linkFilterStatus = "";
+    private string linkFilterAssignee = "";
+    private string linkFilterProject = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AppState.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        users = await AuthService.GetAllUsersAsync();
+        projects = await ProjectService.GetAllProjectsAsync();
+        await LoadTask();
+    }
+
+    private async Task LoadTask()
+    {
+        task = await TaskService.GetTaskByIdAsync(TaskId);
+        if (task == null) Nav.NavigateTo("/tasks");
+    }
+
+    private async Task ChangeStatus(Models.TaskStatus newStatus)
+    {
+        if (task == null) return;
+        task.Status = newStatus;
+        await TaskService.UpdateTaskAsync(task, AppState.CurrentUser?.Id);
+        await LoadTask();
+        AppState.ShowToast($"הסטטוס שונה ל{newStatus.ToHebrew()}");
+    }
+
+    private async Task AddComment()
+    {
+        if (string.IsNullOrWhiteSpace(newComment) || task == null) return;
+        await TaskService.AddCommentAsync(task.Id, AppState.CurrentUser!.Id, newComment);
+        newComment = string.Empty;
+        await LoadTask();
+        AppState.ShowToast("ההערה נוספה בהצלחה");
+    }
+
+    // --- Create Sub Task ---
+    private void OpenCreateSub()
+    {
+        subModel = new TaskItem { Priority = task!.Priority };
+        subAssigneeId = "";
+        subProjectId = task.ProjectId?.ToString() ?? "";
+        subDueDate = null;
+        subError = "";
+        showCreateSub = true;
+    }
+
+    private async Task CreateSubTask()
+    {
+        subError = "";
+        if (string.IsNullOrWhiteSpace(subModel.Title))
+        { subError = "יש למלא כותרת"; return; }
+        if (string.IsNullOrEmpty(subAssigneeId))
+        { subError = "יש לבחור עובד"; return; }
+        if (string.IsNullOrEmpty(subProjectId))
+        { subError = "יש לבחור פרויקט"; return; }
+
+        subModel.ParentTaskId = task!.Id;
+        subModel.ProjectId = int.Parse(subProjectId);
+        subModel.CreatorId = AppState.CurrentUser!.Id;
+        subModel.AssigneeId = int.Parse(subAssigneeId);
+        subModel.DueDate = subDueDate;
+
+        await TaskService.CreateTaskAsync(subModel);
+        showCreateSub = false;
+        await LoadTask();
+        AppState.ShowToast("תת-משימה נוצרה בהצלחה");
+    }
+
+    // --- Link Existing Task ---
+    private async Task OpenLinkModal()
+    {
+        allAvailableTasks = await TaskService.GetAvailableForLinkingAsync(task!.Id);
+        linkSearch = "";
+        linkFilterStatus = "";
+        linkFilterAssignee = "";
+        linkFilterProject = "";
+        selectedLinkIds = new();
+        filteredLinkTasks = allAvailableTasks;
+        showLinkModal = true;
+    }
+
+    private void ToggleLinkSelection(int taskId)
+    {
+        if (!selectedLinkIds.Remove(taskId))
+            selectedLinkIds.Add(taskId);
+    }
+
+    private void FilterLinkTasks()
+    {
+        filteredLinkTasks = allAvailableTasks;
+
+        if (!string.IsNullOrWhiteSpace(linkSearch))
+            filteredLinkTasks = filteredLinkTasks.Where(t =>
+                t.Title.Contains(linkSearch, StringComparison.OrdinalIgnoreCase) ||
+                (t.TaskNumber?.Contains(linkSearch, StringComparison.OrdinalIgnoreCase) ?? false)
+            ).ToList();
+
+        if (!string.IsNullOrEmpty(linkFilterStatus))
+        {
+            var status = Enum.Parse<Models.TaskStatus>(linkFilterStatus);
+            filteredLinkTasks = filteredLinkTasks.Where(t => t.Status == status).ToList();
+        }
+
+        if (!string.IsNullOrEmpty(linkFilterAssignee))
+        {
+            var id = int.Parse(linkFilterAssignee);
+            filteredLinkTasks = filteredLinkTasks.Where(t => t.AssigneeId == id).ToList();
+        }
+
+        if (!string.IsNullOrEmpty(linkFilterProject))
+        {
+            var id = int.Parse(linkFilterProject);
+            filteredLinkTasks = filteredLinkTasks.Where(t => t.ProjectId == id).ToList();
+        }
+    }
+
+    private async Task LinkSelectedTasks()
+    {
+        foreach (var id in selectedLinkIds)
+        {
+            await TaskService.LinkSubTaskAsync(task!.Id, id);
+        }
+        showLinkModal = false;
+        await LoadTask();
+        AppState.ShowToast($"{selectedLinkIds.Count} משימות שויכו בהצלחה");
+        selectedLinkIds = new();
+    }
+
+    private async Task UnlinkSubTask(int childId)
+    {
+        await TaskService.UnlinkSubTaskAsync(childId);
+        await LoadTask();
+        AppState.ShowToast("תת-המשימה נותקה");
+    }
+
+    private async Task GoBack()
+    {
+        await JS.InvokeVoidAsync("history.back");
+    }
+}

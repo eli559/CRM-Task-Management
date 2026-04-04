@@ -1,0 +1,236 @@
+@page "/tasks/create"
+@page "/tasks/edit/{TaskId:int}"
+@inject TaskService TaskService
+@inject AuthService AuthService
+@inject ProjectService ProjectService
+@inject LabelService LabelService
+@inject AppState AppState
+@inject NavigationManager Nav
+
+<h1>@(isEdit ? "עריכת משימה" : "משימה חדשה")</h1>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-error">@errorMessage</div>
+}
+
+<div class="form-card">
+    <EditForm Model="task" OnValidSubmit="HandleSubmit" FormName="taskForm">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="form-row">
+            <div class="form-group flex-2">
+                <label>כותרת *</label>
+                <InputText @bind-Value="task.Title" class="form-control" placeholder="הכנס כותרת למשימה" />
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>תיאור</label>
+            <InputTextArea @bind-Value="task.Description" class="form-control" rows="4" placeholder="הכנס תיאור מפורט..." />
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>פרויקט *</label>
+                <select class="form-control" @bind="projectId">
+                    <option value="">בחר פרויקט</option>
+                    @foreach (var p in projects)
+                    {
+                        <option value="@p.Id">@p.Name</option>
+                    }
+                </select>
+                @if (AppState.IsAdmin)
+                {
+                    <div class="add-project-inline">
+                        <input type="text" class="form-control" @bind="newProjectName" placeholder="פרויקט חדש..." />
+                        <button type="button" class="btn btn-sm btn-primary" @onclick="AddProject"><span class="icon icon-plus"></span></button>
+                    </div>
+                }
+            </div>
+            <div class="form-group">
+                <label>עדיפות</label>
+                <InputSelect @bind-Value="task.Priority" class="form-control">
+                    <option value="@TaskPriority.Low">נמוכה</option>
+                    <option value="@TaskPriority.Medium">בינונית</option>
+                    <option value="@TaskPriority.High">גבוהה</option>
+                    <option value="@TaskPriority.Critical">קריטית</option>
+                </InputSelect>
+            </div>
+            <div class="form-group">
+                <label>סוג משימה *</label>
+                <InputSelect @bind-Value="task.Type" class="form-control">
+                    <option value="@TaskType.Task">משימה</option>
+                    <option value="@TaskType.Bug">באג</option>
+                    <option value="@TaskType.Feature">פיצ'ר</option>
+                    <option value="@TaskType.Improvement">שיפור</option>
+                    <option value="@TaskType.Urgent">דחוף</option>
+                </InputSelect>
+            </div>
+        </div>
+
+        <div class="form-row">
+            @if (isEdit)
+            {
+                <div class="form-group">
+                    <label>סטטוס</label>
+                    <InputSelect @bind-Value="task.Status" class="form-control">
+                        <option value="@Models.TaskStatus.New">חדש</option>
+                        <option value="@Models.TaskStatus.InProgress">בטיפול</option>
+                        <option value="@Models.TaskStatus.Waiting">ממתין</option>
+                        <option value="@Models.TaskStatus.Done">הושלם</option>
+                    </InputSelect>
+                </div>
+            }
+            <div class="form-group">
+                <label>משויך ל *</label>
+                <InputSelect @bind-Value="assigneeId" class="form-control">
+                    <option value="">בחר עובד</option>
+                    @foreach (var user in users)
+                    {
+                        <option value="@user.Id">@user.FullName</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="form-group">
+                <label>תאריך יעד</label>
+                <input type="date" class="form-control" value="@dueDateStr" @onchange="OnDueDateChanged" />
+            </div>
+        </div>
+
+        @if (labels.Any())
+        {
+            <div class="form-group">
+                <label>תגיות</label>
+                <div class="labels-picker">
+                    @foreach (var lbl in labels)
+                    {
+                        var isSelected = selectedLabelIds.Contains(lbl.Id);
+                        <button type="button" class="label-chip @(isSelected ? "label-selected" : "")"
+                                style="--label-color: @lbl.Color"
+                                @onclick="() => ToggleLabel(lbl.Id)">
+                            @lbl.Name
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary" disabled="@isLoading">
+                @(isLoading ? "שומר..." : (isEdit ? "עדכן משימה" : "צור משימה"))
+            </button>
+            <a href="/tasks" class="btn btn-secondary">ביטול</a>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Parameter] public int TaskId { get; set; }
+
+    private TaskItem task = new();
+    private List<User> users = new();
+    private List<Project> projects = new();
+    private List<Label> labels = new();
+    private HashSet<int> selectedLabelIds = new();
+    private string assigneeId = "";
+    private string projectId = "";
+    private string dueDateStr = "";
+    private string errorMessage = string.Empty;
+    private string newProjectName = "";
+    private bool isLoading;
+    private bool isEdit => TaskId > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AppState.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        users = await AuthService.GetAllUsersAsync();
+        projects = await ProjectService.GetAllProjectsAsync();
+        labels = await LabelService.GetAllLabelsAsync();
+
+        if (isEdit)
+        {
+            var existing = await TaskService.GetTaskByIdAsync(TaskId);
+            if (existing == null) { Nav.NavigateTo("/tasks"); return; }
+            task = existing;
+            assigneeId = task.AssigneeId?.ToString() ?? "";
+            projectId = task.ProjectId?.ToString() ?? "";
+            dueDateStr = task.DueDate?.ToString("yyyy-MM-dd") ?? "";
+            selectedLabelIds = new HashSet<int>(await LabelService.GetTaskLabelIdsAsync(task.Id));
+        }
+    }
+
+    private void ToggleLabel(int labelId)
+    {
+        if (!selectedLabelIds.Remove(labelId))
+            selectedLabelIds.Add(labelId);
+    }
+
+    private void OnDueDateChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString();
+        if (DateTime.TryParse(val, out var date))
+            task.DueDate = date;
+        else
+            task.DueDate = null;
+        dueDateStr = val ?? "";
+    }
+
+    private async Task AddProject()
+    {
+        if (string.IsNullOrWhiteSpace(newProjectName)) return;
+        var project = await ProjectService.CreateProjectAsync(newProjectName.Trim());
+        projects = await ProjectService.GetAllProjectsAsync();
+        projectId = project.Id.ToString();
+        newProjectName = "";
+        AppState.ShowToast($"הפרויקט \"{project.Name}\" נוצר");
+    }
+
+    private async Task HandleSubmit()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(task.Title))
+        {
+            errorMessage = "כותרת היא שדה חובה";
+            isLoading = false;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(projectId))
+        {
+            errorMessage = "יש לבחור פרויקט";
+            isLoading = false;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(assigneeId))
+        {
+            errorMessage = "יש לשייך את המשימה לעובד";
+            isLoading = false;
+            return;
+        }
+
+        task.AssigneeId = int.Parse(assigneeId);
+        task.ProjectId = int.Parse(projectId);
+
+        if (isEdit)
+        {
+            await TaskService.UpdateTaskAsync(task);
+            await LabelService.SetTaskLabelsAsync(task.Id, selectedLabelIds.ToList());
+            AppState.ShowToast("המשימה עודכנה בהצלחה");
+        }
+        else
+        {
+            task.CreatorId = AppState.CurrentUser!.Id;
+            var created = await TaskService.CreateTaskAsync(task);
+            await LabelService.SetTaskLabelsAsync(created.Id, selectedLabelIds.ToList());
+            AppState.ShowToast("המשימה נוצרה בהצלחה");
+        }
+
+        Nav.NavigateTo("/tasks");
+        isLoading = false;
+    }
+}

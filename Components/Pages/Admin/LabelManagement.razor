@@ -1,0 +1,174 @@
+@page "/admin/labels"
+@inject LabelService LabelService
+@inject AppState AppState
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h1><span class="icon icon-tasks"></span> ניהול תגיות</h1>
+</div>
+
+@if (!AppState.IsAdmin)
+{
+    <div class="alert alert-error">אין לך הרשאה לצפות בדף זה.</div>
+}
+else
+{
+    <div class="form-card" style="margin-bottom: 24px;">
+        <h3>הוסף תגית חדשה</h3>
+        <div class="form-group">
+            <label>שם התגית</label>
+            <input type="text" class="form-control" @bind="newLabelName" placeholder="שם התגית" @onkeydown="OnKeyDown" style="max-width: 300px;" />
+        </div>
+        <div class="form-group">
+            <label>צבע</label>
+            <div class="color-palette">
+                @foreach (var c in presetColors)
+                {
+                    <button type="button" class="color-btn @(newLabelColor == c ? "color-selected" : "")"
+                            style="background: @c" @onclick="() => newLabelColor = c"></button>
+                }
+            </div>
+        </div>
+        <div class="label-preview">
+            תצוגה מקדימה: <span class="label-chip-display" style="--label-color: @newLabelColor">@(string.IsNullOrEmpty(newLabelName) ? "תגית" : newLabelName)</span>
+        </div>
+        <button class="btn btn-primary" style="margin-top: 12px;" @onclick="AddLabel"><span class="icon icon-plus"></span> הוסף תגית</button>
+    </div>
+
+    <div class="results-count">@labels.Count תגיות</div>
+
+    @if (labels.Any())
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>צבע</th>
+                    <th>שם</th>
+                    <th>תצוגה</th>
+                    <th>פעולות</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var label in labels)
+                {
+                    <tr>
+                        <td>@label.Id</td>
+                        <td><div class="label-color-dot" style="background: @label.Color"></div></td>
+                        <td>
+                            @if (editingId == label.Id)
+                            {
+                                <div>
+                                    <input type="text" class="form-control" @bind="editName" style="max-width: 200px; margin-bottom: 8px;" />
+                                    <div class="color-palette color-palette-small">
+                                        @foreach (var c in presetColors)
+                                        {
+                                            <button type="button" class="color-btn color-btn-sm @(editColor == c ? "color-selected" : "")"
+                                                    style="background: @c" @onclick="() => editColor = c"></button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <strong>@label.Name</strong>
+                            }
+                        </td>
+                        <td>
+                            <span class="label-chip-display" style="--label-color: @(editingId == label.Id ? editColor : label.Color)">
+                                @(editingId == label.Id ? editName : label.Name)
+                            </span>
+                        </td>
+                        <td>
+                            <div class="header-actions">
+                                @if (editingId == label.Id)
+                                {
+                                    <button class="btn btn-sm btn-primary" @onclick="() => SaveEdit(label.Id)"><span class="icon icon-save"></span> שמור</button>
+                                    <button class="btn btn-sm btn-secondary" @onclick="CancelEdit">ביטול</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline" @onclick="() => StartEdit(label)"><span class="icon icon-edit"></span></button>
+                                    <button class="btn btn-sm btn-danger" @onclick="() => DeleteLabel(label.Id)"><span class="icon icon-trash"></span></button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div class="empty-state"><p>אין תגיות. הוסף תגית חדשה למעלה.</p></div>
+    }
+}
+
+@code {
+    private List<Label> labels = new();
+    private string newLabelName = "";
+    private string newLabelColor = "#58a6ff";
+
+    private string[] presetColors = new[]
+    {
+        "#58a6ff", "#3fb950", "#d29922", "#f85149", "#bc8cff",
+        "#00e5ff", "#ff6b6b", "#ffd43b", "#69db7c", "#da77f2",
+        "#4ecdc4", "#ff8a65", "#7950f2", "#e64980", "#20c997",
+        "#fab005", "#845ef7", "#339af0", "#ff922b", "#868e96"
+    };
+    private int? editingId;
+    private string editName = "";
+    private string editColor = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AppState.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        if (!AppState.IsAdmin) return;
+        await LoadLabels();
+    }
+
+    private async Task LoadLabels()
+    {
+        labels = await LabelService.GetAllLabelsAsync();
+    }
+
+    private async Task AddLabel()
+    {
+        if (string.IsNullOrWhiteSpace(newLabelName)) return;
+        await LabelService.CreateLabelAsync(newLabelName.Trim(), newLabelColor);
+        newLabelName = "";
+        newLabelColor = "#58a6ff";
+        await LoadLabels();
+        AppState.ShowToast("התגית נוצרה בהצלחה");
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddLabel();
+    }
+
+    private void StartEdit(Label label)
+    {
+        editingId = label.Id;
+        editName = label.Name;
+        editColor = label.Color;
+    }
+
+    private void CancelEdit() { editingId = null; }
+
+    private async Task SaveEdit(int id)
+    {
+        if (string.IsNullOrWhiteSpace(editName)) return;
+        await LabelService.UpdateLabelAsync(id, editName.Trim(), editColor);
+        editingId = null;
+        await LoadLabels();
+        AppState.ShowToast("התגית עודכנה");
+    }
+
+    private async Task DeleteLabel(int id)
+    {
+        await LabelService.DeleteLabelAsync(id);
+        await LoadLabels();
+        AppState.ShowToast("התגית נמחקה", "error");
+    }
+}

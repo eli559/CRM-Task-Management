@@ -1,0 +1,309 @@
+@page "/admin/users"
+@inject AuthService AuthService
+@inject AppState AppState
+@inject NavigationManager Nav
+
+<div class="user-management-header">
+    <h1><span class="icon icon-users"></span> ניהול משתמשים</h1>
+    <button class="btn btn-primary" @onclick="ShowAddUser"><span class="icon icon-plus"></span> הוסף משתמש</button>
+</div>
+
+@if (!AppState.IsAdmin)
+{
+    <div class="alert alert-error">אין לך הרשאה לצפות בדף זה.</div>
+}
+else
+{
+    @if (pendingUsers.Any())
+    {
+        <div class="new-tasks-alert">
+            <div class="new-tasks-header">
+                <span class="notification-badge">@pendingUsers.Count</span>
+                <h3>משתמשים ממתינים לאישור</h3>
+            </div>
+            <div class="new-tasks-list">
+                @foreach (var user in pendingUsers)
+                {
+                    <div class="new-task-item">
+                        <div class="new-task-info">
+                            <span class="new-task-title">@user.FullName</span>
+                            <span class="new-task-meta">
+                                שם משתמש: @user.Username · אימייל: @user.Email · נרשם: @user.CreatedAt.ToString("dd/MM/yyyy HH:mm")
+                            </span>
+                        </div>
+                        <div class="header-actions">
+                            <button class="btn btn-sm btn-approve" @onclick="() => ApproveUser(user.Id)">
+                                <span class="icon icon-check"></span> אשר
+                            </button>
+                            <button class="btn btn-sm btn-reject" @onclick="() => RejectUser(user.Id)">
+                                <span class="icon icon-x"></span> הסר
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="user-stats">
+        <div class="user-stat">
+            <div class="stat-number">@approvedUsers.Count</div>
+            <div class="stat-label">סה"כ משתמשים</div>
+        </div>
+        <div class="user-stat">
+            <div class="stat-number">@approvedUsers.Count(u => u.IsActive)</div>
+            <div class="stat-label">פעילים</div>
+        </div>
+        <div class="user-stat">
+            <div class="stat-number">@approvedUsers.Count(u => !u.IsActive)</div>
+            <div class="stat-label">חסומים</div>
+        </div>
+        <div class="user-stat">
+            <div class="stat-number">@approvedUsers.Count(u => u.Role == UserRole.Admin)</div>
+            <div class="stat-label">מנהלים</div>
+        </div>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>שם משתמש</th>
+                <th>שם מלא</th>
+                <th>אימייל</th>
+                <th>תפקיד</th>
+                <th>סטטוס</th>
+                <th>תאריך הצטרפות</th>
+                <th>פעולות</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in approvedUsers)
+            {
+                <tr>
+                    <td>@user.Id</td>
+                    <td>@user.Username</td>
+                    <td>@user.FullName</td>
+                    <td>@user.Email</td>
+                    <td>
+                        <span class="badge @(user.Role == UserRole.Admin ? "badge-admin" : "badge-user")">
+                            @(user.Role == UserRole.Admin ? "מנהל" : "משתמש")
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge @(user.IsActive ? "badge-active" : "badge-inactive")">
+                            @(user.IsActive ? "פעיל" : "חסום")
+                        </span>
+                    </td>
+                    <td>@user.CreatedAt.ToString("dd/MM/yyyy")</td>
+                    <td>
+                        @if (user.Id != AppState.CurrentUser!.Id)
+                        {
+                            <div class="header-actions">
+                                <button class="btn btn-sm btn-outline" @onclick="() => ShowEditUser(user)" title="עריכה">
+                                    <span class="icon icon-edit"></span>
+                                </button>
+                                <button class="btn btn-sm @(user.IsActive ? "btn-danger" : "btn-success")"
+                                        @onclick="() => ToggleActive(user.Id)">
+                                    @(user.IsActive ? "חסום" : "הפעל")
+                                </button>
+                                <button class="btn btn-sm btn-outline" @onclick="() => ToggleRole(user.Id)" title="שנה תפקיד">
+                                    @(user.Role == UserRole.Admin ? "הסר מנהל" : "הפוך למנהל")
+                                </button>
+                            </div>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @if (showModal)
+    {
+        <div class="modal-overlay" @onclick="CloseModal">
+            <div class="modal-card" @onclick:stopPropagation="true">
+                <h2>@(isEditMode ? "עריכת משתמש" : "הוספת משתמש חדש")</h2>
+
+                @if (!string.IsNullOrEmpty(modalError))
+                {
+                    <div class="alert alert-error">@modalError</div>
+                }
+
+                <div class="form-group">
+                    <label>שם משתמש (לכניסה למערכת)</label>
+                    <input type="text" class="form-control" @bind="editModel.Username" placeholder="לדוגמא: eliezer" disabled="@isEditMode" />
+                </div>
+                <div class="form-group">
+                    <label>שם מלא (שם העובד)</label>
+                    <input type="text" class="form-control" @bind="editModel.FullName" placeholder="לדוגמא: אליעזר כהן" />
+                </div>
+                <div class="form-group">
+                    <label>אימייל</label>
+                    <input type="email" class="form-control" @bind="editModel.Email" placeholder="אימייל" />
+                </div>
+                @if (!isEditMode)
+                {
+                    <div class="form-group">
+                        <label>סיסמה</label>
+                        <input type="password" class="form-control" @bind="editModel.Password" placeholder="סיסמה (מינימום 6 תווים)" />
+                    </div>
+                }
+                <div class="form-group">
+                    <label>תפקיד</label>
+                    <select class="form-control" @bind="editModel.Role">
+                        <option value="@UserRole.User">משתמש</option>
+                        <option value="@UserRole.Admin">מנהל</option>
+                    </select>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-primary" @onclick="SaveUser">
+                        @(isEditMode ? "שמור שינויים" : "הוסף משתמש")
+                    </button>
+                    <button class="btn btn-secondary" @onclick="CloseModal">ביטול</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<User> allUsers = new();
+    private List<User> approvedUsers => allUsers.Where(u => u.IsApproved).ToList();
+    private List<User> pendingUsers => allUsers.Where(u => !u.IsApproved).ToList();
+    private bool showModal;
+    private bool isEditMode;
+    private string modalError = string.Empty;
+    private EditUserModel editModel = new();
+    private int? editingUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AppState.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        if (!AppState.IsAdmin) return;
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        allUsers = await AuthService.GetAllUsersAsync();
+    }
+
+    private async Task ApproveUser(int userId)
+    {
+        await AuthService.ApproveUserAsync(userId);
+        await LoadUsers();
+        AppState.ShowToast("המשתמש אושר בהצלחה");
+        AppState.NotifyStateChanged();
+    }
+
+    private async Task RejectUser(int userId)
+    {
+        await AuthService.RejectUserAsync(userId);
+        await LoadUsers();
+        AppState.ShowToast("המשתמש הוסר", "error");
+        AppState.NotifyStateChanged();
+    }
+
+    private void ShowAddUser()
+    {
+        isEditMode = false;
+        editModel = new EditUserModel();
+        editingUserId = null;
+        modalError = string.Empty;
+        showModal = true;
+    }
+
+    private void ShowEditUser(User user)
+    {
+        isEditMode = true;
+        editingUserId = user.Id;
+        editModel = new EditUserModel
+        {
+            Username = user.Username,
+            FullName = user.FullName,
+            Email = user.Email,
+            Role = user.Role
+        };
+        modalError = string.Empty;
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        modalError = string.Empty;
+    }
+
+    private async Task SaveUser()
+    {
+        modalError = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(editModel.FullName))
+        {
+            modalError = "יש למלא שם מלא";
+            return;
+        }
+
+        if (isEditMode && editingUserId.HasValue)
+        {
+            var user = allUsers.FirstOrDefault(u => u.Id == editingUserId.Value);
+            if (user != null)
+            {
+                user.FullName = editModel.FullName;
+                user.Email = editModel.Email;
+                user.Role = editModel.Role;
+                await AuthService.UpdateUserAsync(user);
+            }
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(editModel.Username))
+            {
+                modalError = "יש למלא שם משתמש";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(editModel.Password) || editModel.Password.Length < 6)
+            {
+                modalError = "סיסמה חייבת להכיל לפחות 6 תווים";
+                return;
+            }
+
+            var (success, error) = await AuthService.RegisterAsync(
+                editModel.Username, editModel.Password, editModel.FullName, editModel.Email);
+
+            if (!success)
+            {
+                modalError = error;
+                return;
+            }
+        }
+
+        showModal = false;
+        await LoadUsers();
+    }
+
+    private async Task ToggleActive(int userId)
+    {
+        await AuthService.ToggleUserActiveAsync(userId);
+        await LoadUsers();
+    }
+
+    private async Task ToggleRole(int userId)
+    {
+        var user = allUsers.FirstOrDefault(u => u.Id == userId);
+        if (user == null) return;
+        user.Role = user.Role == UserRole.Admin ? UserRole.User : UserRole.Admin;
+        await AuthService.UpdateUserAsync(user);
+        await LoadUsers();
+    }
+
+    private class EditUserModel
+    {
+        public string Username { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public UserRole Role { get; set; } = UserRole.User;
+    }
+}

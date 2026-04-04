@@ -1,0 +1,288 @@
+@inherits LayoutComponentBase
+@inject AppState AppState
+@inject TaskService TaskService
+@inject AuthService AuthService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject RealtimeService Realtime
+@implements IDisposable
+
+<div class="app-container @(lightMode ? "light-theme" : "")">
+    @if (AppState.IsLoggedIn && !IsAuthPage())
+    {
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <img src="images/logo.svg" alt="DIGITALCRAFT" class="sidebar-logo" />
+                <small>ניהול משימות</small>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="/" class="@GetActiveClass("/")"><span class="icon icon-home"></span> דף הבית</a></li>
+                <li>
+                    <a href="/tasks" class="@GetActiveClass("/tasks")" @onclick="OnTasksClicked">
+                        <span class="icon icon-tasks"></span> משימות
+                        @if (newTaskCount > 0)
+                        {
+                            <span class="notification-badge">@newTaskCount</span>
+                        }
+                    </a>
+                </li>
+                <li><a href="/kanban" class="@GetActiveClass("/kanban")"><span class="icon icon-chart"></span> לוח קנבן</a></li>
+                <li><a href="/tasks/create" class="@GetActiveClass("/tasks/create")"><span class="icon icon-plus"></span> משימה חדשה</a></li>
+                @if (AppState.IsAdmin)
+                {
+                    <li class="nav-divider"></li>
+                    <li><a href="/admin/projects" class="@GetActiveClass("/admin/projects")"><span class="icon icon-folder"></span> פרויקטים</a></li>
+                    <li><a href="/admin/labels" class="@GetActiveClass("/admin/labels")"><span class="icon icon-tasks"></span> תגיות</a></li>
+                    <li>
+                        <a href="/admin/users" class="@GetActiveClass("/admin/users")">
+                            <span class="icon icon-users"></span> ניהול משתמשים
+                            @if (pendingUsersCount > 0)
+                            {
+                                <span class="notification-badge">@pendingUsersCount</span>
+                            }
+                        </a>
+                    </li>
+                }
+                @if (AppState.IsAdmin)
+                {
+                    <li class="nav-divider"></li>
+                    <li><a href="/reports" class="@GetActiveClass("/reports")"><span class="icon icon-chart"></span> דוחות</a></li>
+                }
+            </ul>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <strong>@AppState.CurrentUser?.FullName</strong>
+                    <small>@(AppState.IsAdmin ? "מנהל" : "משתמש")</small>
+                </div>
+                <button class="btn btn-logout" @onclick="Logout">יציאה</button>
+            </div>
+        </nav>
+        <main class="main-content">
+            <button class="btn-theme-toggle" @onclick="ToggleTheme" title="@(lightMode ? "מצב כהה" : "מצב בהיר")">
+                @if (lightMode)
+                {
+                    <span class="icon icon-moon"></span>
+                }
+                else
+                {
+                    <span class="icon icon-sun"></span>
+                }
+            </button>
+            @Body
+        </main>
+
+        @if (toastVisible)
+        {
+            <div class="toast toast-@toastType">
+                <span>@toastMessage</span>
+            </div>
+        }
+    }
+    else
+    {
+        <main class="auth-content @(lightMode ? "light-theme" : "")">
+            <button class="btn-theme-toggle auth-theme-toggle" @onclick="ToggleTheme" title="@(lightMode ? "מצב כהה" : "מצב בהיר")">
+                @if (lightMode)
+                {
+                    <span class="icon icon-moon"></span>
+                }
+                else
+                {
+                    <span class="icon icon-sun"></span>
+                }
+            </button>
+            @Body
+        </main>
+    }
+</div>
+
+@code {
+    private bool lightMode;
+    private int newTaskCount;
+    private int pendingUsersCount;
+    private Timer? _pollTimer;
+    private string toastMessage = "";
+    private string toastType = "success";
+    private bool toastVisible;
+    private Timer? _toastTimer;
+
+    private bool _initialized;
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += OnStateChanged;
+        AppState.OnToast += ShowToast;
+        Realtime.OnDataChanged += OnRealtimeUpdate;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_initialized)
+        {
+            _initialized = true;
+
+            if (!AppState.IsLoggedIn)
+            {
+                // Try restore session from localStorage
+                try
+                {
+                    var savedId = await JS.InvokeAsync<string>("getSession");
+                    if (!string.IsNullOrEmpty(savedId) && int.TryParse(savedId, out var userId))
+                    {
+                        var user = await AuthService.GetUserByIdAsync(userId);
+                        if (user != null && user.IsActive && user.IsApproved)
+                        {
+                            AppState.Login(user);
+                            await LoadNewTaskCount();
+                            await LoadPendingUsers();
+                            StartPolling();
+                            var currentUri = Nav.ToBaseRelativePath(Nav.Uri);
+                            if (currentUri == "login" || currentUri == "register")
+                                Nav.NavigateTo("/");
+                            StateHasChanged();
+                            return;
+                        }
+                    }
+                }
+                catch { }
+
+                var uri = Nav.ToBaseRelativePath(Nav.Uri);
+                if (uri != "login" && uri != "register")
+                    Nav.NavigateTo("/login");
+                StateHasChanged();
+            }
+            else
+            {
+                await LoadNewTaskCount();
+                await LoadPendingUsers();
+                StartPolling();
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async void OnStateChanged()
+    {
+        if (AppState.IsLoggedIn)
+        {
+            await LoadNewTaskCount();
+            await LoadPendingUsers();
+            StartPolling();
+        }
+        else
+        {
+            _pollTimer?.Dispose();
+            _pollTimer = null;
+            newTaskCount = 0;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void StartPolling()
+    {
+        _pollTimer?.Dispose();
+        _pollTimer = new Timer(async _ =>
+        {
+            var oldCount = newTaskCount;
+            await LoadNewTaskCount();
+            await LoadPendingUsers();
+            if (newTaskCount > oldCount && newTaskCount > 0)
+            {
+                try { await JS.InvokeVoidAsync("playNotificationSound"); } catch { }
+            }
+            await InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+    }
+
+    private async Task LoadNewTaskCount()
+    {
+        if (!AppState.IsLoggedIn || AppState.CurrentUser == null) return;
+        try
+        {
+            var tasks = await TaskService.GetTasksAsync(new TaskFilter
+            {
+                AssigneeId = AppState.CurrentUser.Id,
+                Status = Models.TaskStatus.New
+            });
+            newTaskCount = tasks.Count;
+            try { await JS.InvokeVoidAsync("updateTabBadge", newTaskCount); } catch { }
+        }
+        catch { }
+    }
+
+    private async Task OnTasksClicked()
+    {
+        if (newTaskCount > 0)
+        {
+            try { await JS.InvokeVoidAsync("playNotificationSound"); } catch { }
+        }
+    }
+
+    private async void OnRealtimeUpdate()
+    {
+        if (!AppState.IsLoggedIn) return;
+        try
+        {
+            await LoadNewTaskCount();
+            await LoadPendingUsers();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { }
+    }
+
+    private async Task LoadPendingUsers()
+    {
+        if (!AppState.IsAdmin) return;
+        try { pendingUsersCount = await AuthService.GetPendingApprovalCountAsync(); } catch { }
+    }
+
+    private async void ShowToast(string message, string type)
+    {
+        toastMessage = message;
+        toastType = type;
+        toastVisible = true;
+        await InvokeAsync(StateHasChanged);
+
+        _toastTimer?.Dispose();
+        _toastTimer = new Timer(async _ =>
+        {
+            toastVisible = false;
+            await InvokeAsync(StateHasChanged);
+        }, null, 3000, Timeout.Infinite);
+    }
+
+    private void ToggleTheme()
+    {
+        lightMode = !lightMode;
+    }
+
+    private bool IsAuthPage()
+    {
+        var uri = Nav.ToBaseRelativePath(Nav.Uri);
+        return uri == "login" || uri == "register";
+    }
+
+    private string GetActiveClass(string path)
+    {
+        var currentUri = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+        if (path == "/" && currentUri == "/") return "active";
+        if (path != "/" && currentUri.StartsWith(path)) return "active";
+        return "";
+    }
+
+    private async Task Logout()
+    {
+        try { await JS.InvokeVoidAsync("clearSession"); } catch { }
+        AppState.Logout();
+        Nav.NavigateTo("/login");
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+        _toastTimer?.Dispose();
+        AppState.OnChange -= OnStateChanged;
+        AppState.OnToast -= ShowToast;
+        Realtime.OnDataChanged -= OnRealtimeUpdate;
+    }
+}
