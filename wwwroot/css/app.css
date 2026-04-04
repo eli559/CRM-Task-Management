@@ -2044,9 +2044,10 @@ select.form-control option {
 }
 
 .auth-theme-toggle {
-    position: absolute;
+    position: fixed;
     top: 20px;
     left: 20px;
+    z-index: 300;
 }
 
 /* ==========================================
