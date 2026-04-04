@@ -81,7 +81,7 @@
     else
     {
         <main class="auth-content @(lightMode ? "light-theme" : "")">
-            <button class="btn-theme-toggle auth-theme-toggle" @onclick="ToggleTheme" title="@(lightMode ? "מצב כהה" : "מצב בהיר")">
+            <button class="btn-auth-theme" @onclick="ToggleTheme" title="@(lightMode ? "מצב כהה" : "מצב בהיר")">
                 @if (lightMode)
                 {
                     <span class="icon icon-moon"></span>

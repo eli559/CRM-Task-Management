@@ -1734,19 +1734,20 @@ select.form-control option {
 .label-chip.label-selected {
     background: var(--label-color);
     color: #fff;
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--label-color) 40%, transparent);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 
 .label-chip-mini {
     display: inline-flex;
     align-items: center;
-    padding: 1px 8px;
+    padding: 2px 8px;
     border-radius: 10px;
     font-size: 0.65rem;
     font-weight: 600;
-    background: color-mix(in srgb, var(--label-color) 15%, transparent);
-    color: var(--label-color);
+    background: var(--label-color);
+    color: #fff;
     white-space: nowrap;
+    opacity: 0.85;
 }
 
 .label-chip-display {
@@ -1756,9 +1757,9 @@ select.form-control option {
     border-radius: 14px;
     font-size: 0.75rem;
     font-weight: 600;
-    background: color-mix(in srgb, var(--label-color) 15%, transparent);
-    color: var(--label-color);
-    border: 1px solid color-mix(in srgb, var(--label-color) 30%, transparent);
+    background: var(--label-color);
+    color: #fff;
+    opacity: 0.9;
 }
 
 .task-labels-inline {
@@ -2081,11 +2082,27 @@ select.form-control option {
     transform: scale(1.1);
 }
 
-.auth-theme-toggle {
+.btn-auth-theme {
     position: fixed;
     top: 20px;
     left: 20px;
     z-index: 300;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    color: var(--text-secondary);
+}
+
+.btn-auth-theme:hover {
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 /* ==========================================
