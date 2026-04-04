@@ -55,19 +55,19 @@
                     <small>@(AppState.IsAdmin ? "מנהל" : "משתמש")</small>
                 </div>
                 <button class="btn btn-logout" @onclick="Logout">יציאה</button>
+                <button class="btn-theme-sidebar" @onclick="ToggleTheme" title="@(lightMode ? "מצב כהה" : "מצב בהיר")">
+                    @if (lightMode)
+                    {
+                        <span class="icon icon-moon"></span> <span>מצב כהה</span>
+                    }
+                    else
+                    {
+                        <span class="icon icon-sun"></span> <span>מצב בהיר</span>
+                    }
+                </button>
             </div>
         </nav>
         <main class="main-content">
-            <button class="btn-theme-toggle" @onclick="ToggleTheme" title="@(lightMode ? "מצב כהה" : "מצב בהיר")">
-                @if (lightMode)
-                {
-                    <span class="icon icon-moon"></span>
-                }
-                else
-                {
-                    <span class="icon icon-sun"></span>
-                }
-            </button>
             @Body
         </main>
 

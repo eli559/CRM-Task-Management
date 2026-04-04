@@ -2017,11 +2017,49 @@ select.form-control option {
 }
 
 /* ---------- Theme Toggle Button ---------- */
+/* Theme toggle - in sidebar */
+.btn-theme-sidebar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px;
+    border-radius: var(--radius-md);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-family: inherit;
+    margin-top: 6px;
+}
+
+.btn-theme-sidebar:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-subtle);
+}
+
+.light-theme .btn-theme-sidebar {
+    background: #edf0f4;
+    border-color: #d0d5de;
+    color: #4a5068;
+}
+
+.light-theme .btn-theme-sidebar:hover {
+    border-color: #0891b2;
+    color: #0891b2;
+}
+
+/* Theme toggle - on login page */
 .btn-theme-toggle {
     position: fixed;
-    top: 16px;
+    top: 20px;
     left: 20px;
-    z-index: 200;
+    z-index: 300;
     background: var(--bg-tertiary);
     border: 1px solid var(--accent);
     border-radius: 50%;
