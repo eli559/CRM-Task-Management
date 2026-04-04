@@ -155,6 +155,9 @@ if (!app.Environment.IsDevelopment())
 app.UseStaticFiles();
 app.UseAntiforgery();
 
+// Health check endpoint - keeps the server alive
+app.MapGet("/health", () => Results.Ok("alive"));
+
 app.MapRazorComponents<CrmApp.Components.App>()
     .AddInteractiveServerRenderMode();
 
