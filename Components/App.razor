@@ -114,6 +114,113 @@
             localStorage.removeItem('crm_user_id');
         };
 
+        // Wire animation for login page
+        window.initWireAnimation = function () {
+            var canvas = document.getElementById('wireCanvas');
+            if (!canvas) return;
+            var ctx = canvas.getContext('2d');
+            var points = [];
+            var mouse = { x: -1000, y: -1000 };
+            var numPoints = 80;
+            var maxDist = 150;
+
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+
+            for (var i = 0; i < numPoints; i++) {
+                points.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 0.8,
+                    vy: (Math.random() - 0.5) * 0.8,
+                    r: Math.random() * 2 + 1
+                });
+            }
+
+            canvas.addEventListener('mousemove', function (e) {
+                mouse.x = e.clientX;
+                mouse.y = e.clientY;
+            });
+
+            canvas.addEventListener('mouseleave', function () {
+                mouse.x = -1000;
+                mouse.y = -1000;
+            });
+
+            // Touch support
+            canvas.addEventListener('touchmove', function (e) {
+                mouse.x = e.touches[0].clientX;
+                mouse.y = e.touches[0].clientY;
+            });
+
+            canvas.addEventListener('touchend', function () {
+                mouse.x = -1000;
+                mouse.y = -1000;
+            });
+
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                for (var i = 0; i < points.length; i++) {
+                    var p = points[i];
+
+                    // Move
+                    p.x += p.vx;
+                    p.y += p.vy;
+
+                    // Bounce
+                    if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+                    if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+                    // Attract to mouse
+                    var dx = mouse.x - p.x;
+                    var dy = mouse.y - p.y;
+                    var dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 250) {
+                        p.x += dx * 0.02;
+                        p.y += dy * 0.02;
+                    }
+
+                    // Draw point
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 229, 255, 0.5)';
+                    ctx.fill();
+
+                    // Connect to nearby points
+                    for (var j = i + 1; j < points.length; j++) {
+                        var p2 = points[j];
+                        var d = Math.sqrt((p.x - p2.x) ** 2 + (p.y - p2.y) ** 2);
+                        if (d < maxDist) {
+                            ctx.beginPath();
+                            ctx.moveTo(p.x, p.y);
+                            ctx.lineTo(p2.x, p2.y);
+                            ctx.strokeStyle = 'rgba(0, 229, 255, ' + (1 - d / maxDist) * 0.3 + ')';
+                            ctx.lineWidth = 0.5;
+                            ctx.stroke();
+                        }
+                    }
+
+                    // Connect to mouse
+                    if (dist < 200) {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(mouse.x, mouse.y);
+                        ctx.strokeStyle = 'rgba(0, 229, 255, ' + (1 - dist / 200) * 0.6 + ')';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+
+                requestAnimationFrame(draw);
+            }
+            draw();
+        };
+
         window.playNotificationSound = function () {
             try {
                 var ctx = new (window.AudioContext || window.webkitAudioContext)();

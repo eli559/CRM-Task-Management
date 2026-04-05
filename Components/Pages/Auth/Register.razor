@@ -2,6 +2,7 @@
 @inject AuthService AuthService
 @inject AppState AppState
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <div class="auth-card">
     <img src="images/logo.svg" alt="DIGITALCRAFT" class="auth-logo" />
@@ -62,6 +63,14 @@
     private string errorMessage = string.Empty;
     private string successMessage = string.Empty;
     private bool isLoading;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try { await JS.InvokeVoidAsync("initWireAnimation"); } catch { }
+        }
+    }
     private bool showPassword;
 
     private async Task HandleRegister()

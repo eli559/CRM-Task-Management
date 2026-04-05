@@ -365,6 +365,21 @@ a:hover {
     max-width: calc(100vw - var(--sidebar-width));
 }
 
+#wireCanvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: auto;
+}
+
+.auth-content .auth-card {
+    position: relative;
+    z-index: 1;
+}
+
 /* Auth layout - centered, no sidebar */
 .auth-content {
     flex: 1;

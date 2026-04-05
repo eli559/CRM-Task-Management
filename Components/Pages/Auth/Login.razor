@@ -59,22 +59,27 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !AppState.IsLoggedIn)
+        if (firstRender)
         {
-            try
+            try { await JS.InvokeVoidAsync("initWireAnimation"); } catch { }
+
+            if (!AppState.IsLoggedIn)
             {
-                var savedId = await JS.InvokeAsync<string>("getSession");
-                if (!string.IsNullOrEmpty(savedId) && int.TryParse(savedId, out var userId))
+                try
                 {
-                    var user = await AuthService.GetUserByIdAsync(userId);
-                    if (user != null && user.IsActive && user.IsApproved)
+                    var savedId = await JS.InvokeAsync<string>("getSession");
+                    if (!string.IsNullOrEmpty(savedId) && int.TryParse(savedId, out var userId))
                     {
-                        AppState.Login(user);
-                        Nav.NavigateTo("/");
+                        var user = await AuthService.GetUserByIdAsync(userId);
+                        if (user != null && user.IsActive && user.IsApproved)
+                        {
+                            AppState.Login(user);
+                            Nav.NavigateTo("/");
+                        }
                     }
                 }
+                catch { }
             }
-            catch { }
         }
     }
 

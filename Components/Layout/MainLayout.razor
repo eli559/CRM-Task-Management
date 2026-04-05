@@ -89,16 +89,7 @@
     else
     {
         <main class="auth-content">
-            <button class="btn-auth-theme" @onclick="ToggleTheme">
-                @if (lightMode)
-                {
-                    <span class="icon icon-moon"></span> <span>כהה</span>
-                }
-                else
-                {
-                    <span class="icon icon-sun"></span> <span>בהיר</span>
-                }
-            </button>
+            <canvas id="wireCanvas"></canvas>
             @Body
         </main>
     }
