@@ -4,14 +4,22 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Use PORT env variable from Cloud Run
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 var dbUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 if (!string.IsNullOrEmpty(dbUrl))
 {
+    // Convert postgresql:// URL to Npgsql connection string
+    var uri = new Uri(dbUrl);
+    var userInfo = uri.UserInfo.Split(':');
+    var connStr = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
     builder.Services.AddDbContextFactory<AppDbContext>(options =>
-        options.UseNpgsql(dbUrl));
+        options.UseNpgsql(connStr));
 }
 else
 {

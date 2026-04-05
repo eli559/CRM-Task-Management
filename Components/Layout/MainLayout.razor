@@ -10,13 +10,21 @@
 <div class="app-container @(lightMode ? "light-theme" : "")">
     @if (AppState.IsLoggedIn && !IsAuthPage())
     {
-        <nav class="sidebar">
+        <!-- Mobile header -->
+        <div class="mobile-header">
+            <img src="images/logo.svg" alt="DIGITALCRAFT" class="mobile-logo" />
+            <button class="btn-hamburger" @onclick="ToggleSidebar">
+                <span class="icon icon-tasks"></span>
+            </button>
+        </div>
+        <div class="sidebar-overlay @(sidebarOpen ? "show" : "")" @onclick="CloseSidebar"></div>
+        <nav class="sidebar @(sidebarOpen ? "sidebar-open" : "")">
             <div class="sidebar-header">
                 <img src="images/logo.svg" alt="DIGITALCRAFT" class="sidebar-logo" />
                 <small>ניהול משימות</small>
             </div>
             <ul class="nav-menu">
-                <li><a href="/" class="@GetActiveClass("/")"><span class="icon icon-home"></span> דף הבית</a></li>
+                <li><a href="/" class="@GetActiveClass("/")" @onclick="CloseSidebar"><span class="icon icon-home"></span> דף הבית</a></li>
                 <li>
                     <a href="/tasks" class="@GetActiveClass("/tasks")" @onclick="OnTasksClicked">
                         <span class="icon icon-tasks"></span> משימות
@@ -26,8 +34,8 @@
                         }
                     </a>
                 </li>
-                <li><a href="/kanban" class="@GetActiveClass("/kanban")"><span class="icon icon-chart"></span> לוח קנבן</a></li>
-                <li><a href="/tasks/create" class="@GetActiveClass("/tasks/create")"><span class="icon icon-plus"></span> משימה חדשה</a></li>
+                <li><a href="/kanban" class="@GetActiveClass("/kanban")" @onclick="CloseSidebar"><span class="icon icon-chart"></span> לוח קנבן</a></li>
+                <li><a href="/tasks/create" class="@GetActiveClass("/tasks/create")" @onclick="CloseSidebar"><span class="icon icon-plus"></span> משימה חדשה</a></li>
                 @if (AppState.IsAdmin)
                 {
                     <li class="nav-divider"></li>
@@ -98,6 +106,7 @@
 
 @code {
     private bool lightMode;
+    private bool sidebarOpen;
     private int newTaskCount;
     private int pendingUsersCount;
     private Timer? _pollTimer;
@@ -254,6 +263,16 @@
     private void ToggleTheme()
     {
         lightMode = !lightMode;
+    }
+
+    private void ToggleSidebar()
+    {
+        sidebarOpen = !sidebarOpen;
+    }
+
+    private void CloseSidebar()
+    {
+        sidebarOpen = false;
     }
 
     private bool IsAuthPage()
